@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 import os
 import sys
+import argparse
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 open_config_name = "ufrgs.ovpn"
@@ -163,12 +164,23 @@ def run_all_tests(label, skip_iperf = False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Script with debug flag")
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode",
+    )
+
+    args = parser.parse_args()
+    DEBUG = args.debug
+    
+    if DEBUG:
+        print("Debug: ON")
+    
     print("=== VPN Impact Test ===")
     print("Results will be saved to:", OUTPUT_CSV)
     print("Press Ctrl+C to stop.\n")
-    
-    if len(sys.argv) > 1 and sys.argv[1].upper() == "TRUE":
-        DEBUG = True
     
     skip_iperf = True
 
