@@ -13,7 +13,7 @@ PING_HOST = "moodle.ufrgs.br"
 IPERF_SERVER = "iperf.example.com"  
 IPERF_PORT = 5201            
 OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
-INTERVAL = 30  
+INTERVAL = 15  
 IPERF_DURATION = 10       
 PING_COUNT = 10
 OPENVPN_CMD = ["sudo", "openvpn", "--config", "your_config.ovpn"] 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
             
             print("\n[VPN ON] Starting VPN...")
             vpn_proc = start_vpn()
-            time.sleep(15)
+            time.sleep(INTERVAL)
 
             run_all_tests("VPN_ON", skip_iperf= skip_iperf)
 
