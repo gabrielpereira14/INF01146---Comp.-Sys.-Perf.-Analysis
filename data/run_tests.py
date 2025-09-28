@@ -7,26 +7,29 @@ import os
 import sys
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-open_config_name = "ufrgs.ovn"
+open_config_name = "ufrgs.ovpn"
+pass_path = "pass.txt"
+
+DEBUG = False
 
 PING_HOST = "moodle.ufrgs.br"       
 IPERF_SERVER = "iperf.example.com"  
 IPERF_PORT = 5201            
 OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
-INTERVAL = 15  
+INTERVAL = 5
 IPERF_DURATION = 10       
 PING_COUNT = 10
-OPENVPN_CMD = ["sudo", "openvpn", "--config", "your_config.ovpn"] 
+OPENVPN_CMD = ["sudo", "openvpn", "--config", open_config_name, "--auth-user-pass", pass_path ] 
 OPENVPN_CONFIG = "/path/to/config.ovpn" 
 WAIT_AFTER_VPN = 10      
-
+TRACEROUTE_CMD = ["sudo", "traceroute", PING_HOST] 
 
 def kill_vpn():
     """Kill any running OpenVPN processes."""
     subprocess.run(["pkill", "-f", "openvpn"], capture_output=True)
     
 def start_vpn():
-    return subprocess.Popen(OPENVPN_CMD, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return subprocess.Popen(OPENVPN_CMD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 def is_vpn_running():
     """Check if OpenVPN is already running."""
@@ -40,6 +43,18 @@ def is_vpn_running():
 def run_ping(host, count=10):
     """Run ping and parse latency, jitter, packet loss."""
     try:
+        
+        if DEBUG:
+            result = subprocess.run(
+                TRACEROUTE_CMD,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            output = result.stdout
+            
+            print(output)
+                
         result = subprocess.run(
             ["ping", "-c", str(count), host],
             capture_output=True,
@@ -151,6 +166,9 @@ if __name__ == "__main__":
     print("=== VPN Impact Test ===")
     print("Results will be saved to:", OUTPUT_CSV)
     print("Press Ctrl+C to stop.\n")
+    
+    if len(sys.argv) > 1 and sys.argv[1].upper() == "TRUE":
+        DEBUG = True
     
     skip_iperf = True
 
