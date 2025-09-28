@@ -4,7 +4,6 @@ import csv
 import time
 from datetime import datetime
 import os
-import sys
 import argparse
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,7 +15,8 @@ DEBUG = False
 PING_HOST = "moodle.ufrgs.br"       
 IPERF_SERVER = "iperf.example.com"  
 IPERF_PORT = 5201            
-OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
+LOCAL_OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
+COMMON_OUTPUT_CSV = os.path.join(script_dir, "common_vpn_test_results.csv")
 INTERVAL = 5
 IPERF_DURATION = 10       
 PING_COUNT = 10
@@ -120,11 +120,11 @@ def run_iperf_udp(server, port=5201, duration=10, bitrate="10M"):
         return None, None, None
 
 
-def write_to_csv(row):
+def write_to_csv(row, file):
     """Append results to CSV file."""
-    file_exists = os.path.isfile(OUTPUT_CSV)
+    file_exists = os.path.isfile(file)
 
-    with open(OUTPUT_CSV, "a", newline="") as f:
+    with open(file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow([
@@ -160,7 +160,8 @@ def run_all_tests(label, skip_iperf = False):
         
         result.extend([tcp_throughput, udp_throughput, udp_jitter, udp_loss])
     
-    write_to_csv(result)
+    write_to_csv(result, LOCAL_OUTPUT_CSV)
+    write_to_csv(result, COMMON_OUTPUT_CSV)
 
 
 if __name__ == "__main__":
@@ -179,7 +180,7 @@ if __name__ == "__main__":
         print("Debug: ON")
     
     print("=== VPN Impact Test ===")
-    print("Results will be saved to:", OUTPUT_CSV)
+    print("Results will be saved to:", LOCAL_OUTPUT_CSV)
     print("Press Ctrl+C to stop.\n")
     
     skip_iperf = True
