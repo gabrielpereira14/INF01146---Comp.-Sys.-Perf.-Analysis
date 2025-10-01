@@ -13,8 +13,8 @@ pass_path = "pass.txt"
 DEBUG = False
 
 PING_HOST = "moodle.ufrgs.br"       
-IPERF_SERVER = "iperf.example.com"  
-IPERF_PORT = 5201            
+IPERF_SERVER = "pcad.inf.ufrgs.br"  
+IPERF_PORT = 8787            
 LOCAL_OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
 COMMON_OUTPUT_CSV = os.path.join(script_dir, "common_vpn_test_results.csv")
 INTERVAL = 5
@@ -80,17 +80,20 @@ def run_ping(host, count=10):
         return None, None, None
 
 
-def run_iperf_tcp(server, port=5201, duration=10):
-    """Run iperf3 TCP test and return throughput in Mbps."""
+def run_iperf_tcp(server, port=8787, duration=10):
+    """Run iperf TCP test and return throughput in Mbps."""
     try:
         result = subprocess.run(
-            ["iperf3", "-c", server, "-p", str(port), "-J", "-t", str(duration)],
+            ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)],
             capture_output=True,
             text=True,
             check=True
         )
-        data = json.loads(result.stdout)
-        bps = data["end"]["sum_received"]["bits_per_second"]
+        output_csv = result.stdout.strip()
+        values = output_csv.split(',')
+        
+        bps = float(values[-1])
+        
         throughput_mbps = bps / 1e6
         return throughput_mbps
     except Exception as e:
@@ -98,11 +101,11 @@ def run_iperf_tcp(server, port=5201, duration=10):
         return None
 
 
-def run_iperf_udp(server, port=5201, duration=10, bitrate="10M"):
-    """Run iperf3 UDP test and return throughput, jitter, loss."""
+def run_iperf_udp(server, port=8787, duration=10, bitrate="10M"):
+    """Run iperf UDP test and return throughput, jitter, loss."""
     try:
         result = subprocess.run(
-            ["iperf3", "-c", server, "-p", str(port), "-J", "-t", str(duration), "-u", "-b", bitrate],
+            ["iperf", "-c", server, "-p", str(port), "-J", "-t", str(duration), "-u", "-b", bitrate],
             capture_output=True,
             text=True,
             check=True
@@ -136,7 +139,7 @@ def write_to_csv(row, file):
         writer.writerow(row)
 
 
-def run_all_tests(label, skip_iperf = False):
+def run_all_tests(label, skip_udp = False):
     """Run ping + iperf TCP + iperf UDP and log results."""
     timestamp = datetime.now().isoformat()
     pretty_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -152,11 +155,18 @@ def run_all_tests(label, skip_iperf = False):
         latency, jitter, loss,
         
     ]
-    if not skip_iperf: 
-        tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
+    
+    tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
+    
+    if tcp_throughput is not None: 
+        print(f"iperf TCP  -> Throughput: {tcp_throughput:.2f} Mbps")
+        result.extend([tcp_throughput])
+    else:
+        print("Could not run iperf tcp test, check if the server is online")
+    
+    if not skip_udp: 
         udp_throughput, udp_jitter, udp_loss = run_iperf_udp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
-        print(f"TCP  -> Throughput: {tcp_throughput:.2f} Mbps")
-        print(f"UDP  -> Throughput: {udp_throughput:.2f} Mbps | Jitter: {udp_jitter:.2f} ms | Loss: {udp_loss:.2f} %")
+        print(f"iperf UDP  -> Throughput: {udp_throughput:.2f} Mbps | Jitter: {udp_jitter:.2f} ms | Loss: {udp_loss:.2f} %")
         
         result.extend([tcp_throughput, udp_throughput, udp_jitter, udp_loss])
     
@@ -183,7 +193,7 @@ if __name__ == "__main__":
     print("Results will be saved to:", LOCAL_OUTPUT_CSV)
     print("Press Ctrl+C to stop.\n")
     
-    skip_iperf = True
+    skip_udp = True
 
     try:
         while True:
@@ -193,14 +203,14 @@ if __name__ == "__main__":
             vpn_proc = start_vpn()
             time.sleep(INTERVAL)
 
-            run_all_tests("VPN_ON", skip_iperf= skip_iperf)
+            run_all_tests("VPN_ON", skip_udp= skip_udp)
 
             kill_vpn()
 
             time.sleep(INTERVAL)
             
             print("\n[VPN OFF] Running tests...")
-            run_all_tests("VPN_OFF", skip_iperf= skip_iperf)
+            run_all_tests("VPN_OFF", skip_udp= skip_udp)
 
             time.sleep(INTERVAL)
             
