@@ -72,7 +72,7 @@ def run_ping(host, count=10):
         rtt_line = [l for l in output.splitlines() if "rtt" in l or "round-trip" in l][0]
         stats = rtt_line.split("=")[1].split()[0].split("/")
         latency_avg = float(stats[1])  # avg latency (ms)
-        latency_jitter = float(stats[2]) - float(stats[0])  # stdev ≈ jitter
+        latency_jitter = float(stats[3]) 
 
         return latency_avg, latency_jitter, packet_loss
     except Exception as e:
