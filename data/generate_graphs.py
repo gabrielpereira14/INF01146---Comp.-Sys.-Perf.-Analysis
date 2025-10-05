@@ -42,6 +42,7 @@ sns.lineplot(
 )
 axes[0].set_title("Jitter with VPN")
 axes[0].set_ylabel("ms")
+axes[0].set_xlabel("Date")
 
 # VPN OFF
 sns.lineplot(
@@ -51,6 +52,7 @@ sns.lineplot(
 
 axes[1].set_title("Jitter without VPN")
 axes[1].set_ylabel("ping_jitter_ms")
+axes[1].set_xlabel("Date")
 
 
 print(len(df_jitter))
@@ -98,6 +100,7 @@ sns.lineplot(
 
 axes[0].set_title("Throughput with VPN")
 axes[0].set_ylabel("Mbps")
+axes[0].set_xlabel("Date")
 
 # VPN OFF
 sns.lineplot(
