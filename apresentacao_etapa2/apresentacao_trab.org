@@ -1,5 +1,5 @@
-#+TITLE: MediÁ„o  do impacto de uma infraestrutura de VPN na taxa de transmiss„o e na latÍncia.
-#+AUTHOR: Ester Crestani, Gabriel Pereira e J˙lia Pimentel
+#+TITLE: Medi√ß√£o  do impacto de uma infraestrutura de VPN na taxa de transmiss√£o e na lat√™ncia.
+#+AUTHOR: Ester Crestani, Gabriel Pereira e J√∫lia Pimentel
 #+OPTIONS: toc:nil num:nil
 #+HTML_HEAD: <style>body{font-family:Segoe UI,Arial,sans-serif;background:#f7f7f7;color:#222;padding:60px;} h1{color:#ffffff;}</style>
 
@@ -18,21 +18,20 @@ body {
 
 
 * Objetivos da etapa
-- Configurar ambiente de mediÁ„o automatizado
+- Configurar ambiente de medi√ß√£o automatizado
 - Realizar testes com e sem VPN
-- Registrar resultados em CSV para an·lise
+- Registrar resultados em CSV para an√°lise
 - Avaliar funcionamento das ferramentas (ping e iperf3)
-- RealizaÁ„o de an·lises preliminares
+- Realiza√ß√£o de an√°lises preliminares
 
-* ImplementaÁ„o
-- Script em Python para automaÁ„o das mediÁıes
+* Implementa√ß√£o
+- Script em Python para automa√ß√£o das medi√ß√µes
   
-- ExecuÁ„o alternada entre cen·rios:
-     VPN ON: conex„o via OpenVPN UFRGS
-     VPN OFF: conex„o direta
+- Execu√ß√£o alternada entre cen√°rios:
+     VPN ON: conex√£o via OpenVPN UFRGS
+     VPN OFF: conex√£o direta
      
-- Coleta autom·tica de: latÍncia, jitter, perda de pacotes (ping)
-throughput TCP e UDP (iperf3)
+- Coleta autom√°tica de: lat√™ncia, jitter, perda de pacotes (ping), throughput TCP e UDP (iperf3)
 - Salvamento dos resultados em .csv
   Arquivos: vpn_test_results.csv e common_vpn_test_results.csv
 
@@ -40,31 +39,32 @@ throughput TCP e UDP (iperf3)
 - Servidor iperf: pcad.inf.ufrgs.br
 - Site para ping: moodle.ufrgs.br
 
-AutenticaÁ„o autom·tica via arquivo pass.txt
+Autentica√ß√£o autom√°tica via arquivo pass.txt
 Intervalos entre testes: 5 segundos
-DuraÁ„o de cada mediÁ„o: 10 segundos
+Dura√ß√£o de cada medi√ß√£o: 10 segundos
 
-- Testes realziados em diferentes dias e hor·rios para rmelhor  amostragem
+- Testes realziados em diferentes dias e hor√°rios para rmelhor  amostragem
 
 
-* Material para mediÁ„o
+* Material para medi√ß√£o
 # Adicionar Script em python utilizado para solicitar as medidas #
 
 * Resultados preliminares:
-- Gr·ficos
+- Gr√°ficos
 
-* PrÛximos passos:
-- Realizar mais mediÁıes em diferentes hor·rios
-- Gerar novas an·lises e indicadores
-- Preparar an·lise crÌtica para etapa final
+* Pr√≥ximos passos:
+- Realizar mais medi√ß√µes em diferentes hor√°rios
+- Gerar novas an√°lises e indicadores
+- Preparar an√°lise cr√≠tica para etapa final
 
   
 
 
 
-* Slide 3 exemplo para imagem
+/* * Slide 3 exemplo para imagem
 
 #+ATTR_HTML: :width 400px
 [[file:grafico.png]]
 
-Aqui vai a imagem do slide.
+Aqui vai a imagem do slide. *\
+
