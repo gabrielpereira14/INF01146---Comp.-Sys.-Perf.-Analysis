@@ -191,6 +191,14 @@ if __name__ == "__main__":
     
     if DEBUG:
         print("Debug: ON")
+        
+    if os.geteuid() != 0:
+        print("This script requires sudo. Re-launching...")
+        
+        args = ['sudo', sys.executable] + sys.argv
+        
+        # Replace the current process with the new one
+        os.execvp(args[0], args)
     
     print("=== VPN Impact Test ===")
     print("Results will be saved to:", LOCAL_OUTPUT_CSV)
