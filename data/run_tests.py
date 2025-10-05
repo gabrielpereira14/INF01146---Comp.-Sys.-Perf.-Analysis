@@ -13,6 +13,8 @@ pass_path = "pass.txt"
 
 person = 'gabriel'
 
+os.makedirs(f"{script_dir}/{person}", exist_ok=True)
+
 DEBUG = False
 
 PING_HOST = "moodle.ufrgs.br"       
@@ -27,6 +29,7 @@ OPENVPN_CMD = ["sudo", "openvpn", "--config", open_config_name, "--auth-user-pas
 OPENVPN_CONFIG = "/path/to/config.ovpn" 
 WAIT_AFTER_VPN = 10      
 TRACEROUTE_CMD = ["sudo", "traceroute", PING_HOST] 
+
 
 def kill_vpn():
     """Kill any running OpenVPN processes."""
