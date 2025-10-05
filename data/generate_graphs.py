@@ -150,6 +150,7 @@ sns.lineplot(
 )
 axes[1].set_title("Throughput without VPN")
 axes[1].set_ylabel("Mbps")
+axes[1].set_xlabel("Date")
 
 
 for ax in axes:
