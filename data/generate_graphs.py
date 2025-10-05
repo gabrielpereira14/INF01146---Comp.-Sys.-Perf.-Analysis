@@ -4,16 +4,57 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import seaborn as sns
+import sys
+
+def load_env_manual(env_path):
+    if not os.path.exists(env_path):
+        raise FileNotFoundError(f"Error: .env file not found at {env_path}")
+    
+    with open(env_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            if '=' in line:
+                key, value = line.split('=', 1)
+                
+                os.environ[key.strip()] = value.strip()
+
+
+
+try:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+    dotenv_path = os.path.join(parent_dir, '.env')
+    
+    load_env_manual(dotenv_path)
+
+    user_name = os.getenv('USER_NAME')
+
+    if user_name:
+        print(f"Hello, {user_name}!")
+    else:
+        print("Could not find the 'USER_NAME' variable in the .env file.")
+
+except FileNotFoundError as e:
+    sys.stderr.write(f"{e}\n")
+    sys.exit(1)
+except Exception as e:
+    sys.stderr.write(f"An unexpected error occurred: {e}\n")
+    sys.exit(1)
+
+user_name = user_name.lower()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 file_name = "vpn_test_results.csv"
-person = "gabriel"
-image_dir = f"{script_dir}/{person}/images/"
+
+image_dir = f"{script_dir}/{user_name}/images/"
 os.makedirs(image_dir, exist_ok=True)
 
 date_fmt = mdates.DateFormatter("%d/%m")
 
-df = pd.read_csv(f"{script_dir}/{person}/{file_name}", parse_dates=["timestamp"])
+df = pd.read_csv(f"{script_dir}/{user_name}/{file_name}", parse_dates=["timestamp"])
 df["date"] = df["timestamp"].dt.date
 
 vpn_fixed_day = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
@@ -63,7 +104,7 @@ for ax in axes:
     
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}/jitter_comparison_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}/jitter_comparison_{user_name}.png", dpi=300)
 plt.close()
 
 df_jitter = df_jitter[(jitter_data <= upper_bound)]
@@ -77,7 +118,7 @@ plt.ylabel('Ping Jitter (ms)')
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}/jitter_comparison_violin_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}/jitter_comparison_violin_{user_name}.png", dpi=300)
 plt.close()
 
 
@@ -117,7 +158,7 @@ for ax in axes:
     ax.xaxis.set_major_locator(mdates.DayLocator())
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}/throughput_comparison_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}/throughput_comparison_{user_name}.png", dpi=300)
 plt.close()
 
 ###########################################################################################################################
@@ -154,7 +195,7 @@ axes[1].set_xlabel("")
 
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}//latency_violin_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}//latency_violin_{user_name}.png", dpi=300)
 plt.close()
 
 
@@ -181,7 +222,7 @@ plt.xlabel("Hour of the Day")
 plt.ylabel("Date")
 plt.title(f"Heatmap of Average Latency")
 plt.tight_layout()
-plt.savefig(f"{image_dir}/latency_heatmap_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}/latency_heatmap_{user_name}.png", dpi=300)
 plt.close()
 
 
@@ -230,7 +271,7 @@ for ax in axes:
 
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}/loss_{person}.png", dpi=300)
+plt.savefig(f"{image_dir}/loss_{user_name}.png", dpi=300)
 
 sns.lineplot(
     data=avg_loss_on,
@@ -245,7 +286,7 @@ sns.lineplot(
 )
 
 plt.tight_layout()
-plt.savefig(f"{image_dir}/loss_{person}_avg.png", dpi=300)
+plt.savefig(f"{image_dir}/loss_{user_name}_avg.png", dpi=300)
 plt.close()
 
 ######################################################################################

@@ -7,20 +7,59 @@ from datetime import datetime
 import os
 import argparse
 
+
+def load_env_manual(env_path):
+    if not os.path.exists(env_path):
+        raise FileNotFoundError(f"Error: .env file not found at {env_path}")
+    
+    with open(env_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            if '=' in line:
+                key, value = line.split('=', 1)
+                
+                os.environ[key.strip()] = value.strip()
+
+
+
+try:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+    dotenv_path = os.path.join(parent_dir, '.env')
+    
+    load_env_manual(dotenv_path)
+
+    user_name = os.getenv('USER_NAME')
+
+    if user_name:
+        print(f"Hello, {user_name}!")
+    else:
+        print("Could not find the 'USER_NAME' variable in the .env file.")
+
+except FileNotFoundError as e:
+    sys.stderr.write(f"{e}\n")
+    sys.exit(1)
+except Exception as e:
+    sys.stderr.write(f"An unexpected error occurred: {e}\n")
+    sys.exit(1)
+
+user_name = user_name.lower()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 open_config_name = "ufrgs.ovpn"
 pass_path = "pass.txt"
 
-person = 'gabriel'
-
-os.makedirs(f"{script_dir}/{person}", exist_ok=True)
+os.makedirs(f"{script_dir}/{user_name}", exist_ok=True)
 
 DEBUG = False
 
 PING_HOST = "moodle.ufrgs.br"       
 IPERF_SERVER = "pcad.inf.ufrgs.br"  
 IPERF_PORT = 8787            
-LOCAL_OUTPUT_CSV = os.path.join(script_dir, person, "vpn_test_results.csv")
+LOCAL_OUTPUT_CSV = os.path.join(script_dir, user_name, "vpn_test_results.csv")
 COMMON_OUTPUT_CSV = os.path.join(script_dir, "common_vpn_test_results.csv")
 INTERVAL = 5
 IPERF_DURATION = 10       
