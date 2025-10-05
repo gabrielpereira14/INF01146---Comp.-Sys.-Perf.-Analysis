@@ -8,7 +8,7 @@ import seaborn as sns
 script_dir = os.path.dirname(os.path.abspath(__file__))
 file_name = "vpn_test_results.csv"
 person = "gabriel"
-image_dir = f"{script_dir}/images/{person}/"
+image_dir = f"{script_dir}/{person}/images/"
 os.makedirs(image_dir, exist_ok=True)
 
 date_fmt = mdates.DateFormatter("%d/%m")

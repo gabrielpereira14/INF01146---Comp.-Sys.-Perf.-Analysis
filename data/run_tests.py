@@ -2,6 +2,7 @@ import subprocess
 import json
 import csv
 import time
+import sys
 from datetime import datetime
 import os
 import argparse
@@ -10,12 +11,14 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 open_config_name = "ufrgs.ovpn"
 pass_path = "pass.txt"
 
+person = 'gabriel'
+
 DEBUG = False
 
 PING_HOST = "moodle.ufrgs.br"       
 IPERF_SERVER = "pcad.inf.ufrgs.br"  
 IPERF_PORT = 8787            
-LOCAL_OUTPUT_CSV = os.path.join(script_dir, "vpn_test_results.csv")
+LOCAL_OUTPUT_CSV = os.path.join(script_dir, person, "vpn_test_results.csv")
 COMMON_OUTPUT_CSV = os.path.join(script_dir, "common_vpn_test_results.csv")
 INTERVAL = 5
 IPERF_DURATION = 10       
