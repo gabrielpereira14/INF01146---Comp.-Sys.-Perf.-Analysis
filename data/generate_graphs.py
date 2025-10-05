@@ -13,7 +13,7 @@ os.makedirs(image_dir, exist_ok=True)
 
 date_fmt = mdates.DateFormatter("%d/%m")
 
-df = pd.read_csv(f"{script_dir}/{file_name}", parse_dates=["timestamp"])
+df = pd.read_csv(f"{script_dir}/{person}/{file_name}", parse_dates=["timestamp"])
 df["date"] = df["timestamp"].dt.date
 
 vpn_fixed_day = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
