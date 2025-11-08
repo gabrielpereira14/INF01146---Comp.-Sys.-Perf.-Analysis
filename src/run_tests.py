@@ -5,10 +5,11 @@ import time
 import sys
 from datetime import datetime
 import os
+import platform
 import argparse
 
-
 def load_env_manual(env_path):
+    """Carrega manualmente as variáveis de um arquivo .env"""
     if not os.path.exists(env_path):
         raise FileNotFoundError(f"Error: .env file not found at {env_path}")
     
@@ -20,15 +21,16 @@ def load_env_manual(env_path):
             
             if '=' in line:
                 key, value = line.split('=', 1)
-                
                 os.environ[key.strip()] = value.strip()
 
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+data_dir = f"{project_root}/data"
 
+# carregamento do .env
 try:
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    dotenv_path = os.path.join(parent_dir, '.env')
+    dotenv_path = os.path.join(project_root, '.env') 
     
     load_env_manual(dotenv_path)
 
@@ -48,87 +50,97 @@ except Exception as e:
 
 user_name = user_name.lower()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(script_dir)
-data_dir = f"{project_root}/data"
-
-open_config_name = "ufrgs.ovpn"
-pass_path = "pass.txt"
+open_vpn_config_path = os.path.join(script_dir, "ufrgs.ovpn")
+pass_path = os.path.join(script_dir, "pass.txt")
 
 os.makedirs(f"{data_dir}/{user_name}", exist_ok=True)
 
 DEBUG = False
 
-PING_HOST = "moodle.ufrgs.br"       
-IPERF_SERVER = "pcad.inf.ufrgs.br"  
-IPERF_PORT = 8787            
+PING_HOST = "moodle.ufrgs.br"      
+IPERF_SERVER = "pcad.inf.ufrgs.br" 
+IPERF_PORT = 8787                  
 LOCAL_OUTPUT_CSV = os.path.join(data_dir, user_name, "vpn_test_results.csv")
-INTERVAL = 5
-IPERF_DURATION = 10       
-PING_COUNT = 10
-OPENVPN_CMD = ["sudo", "openvpn", "--config", open_config_name, "--auth-user-pass", pass_path ] 
-OPENVPN_CONFIG = "/path/to/config.ovpn" 
-WAIT_AFTER_VPN = 10      
+INTERVAL = 5 
+IPERF_DURATION = 10      
+OPENVPN_CMD = ["sudo", "openvpn", "--config", open_vpn_config_path , "--auth-user-pass", pass_path]
 TRACEROUTE_CMD = ["sudo", "traceroute", PING_HOST] 
-
+WAIT_AFTER_VPN = 10
+SESSION_DURATION_SECONDS = 1800 
+LONG_PING_OUTPUT_VPN_ON = os.path.join(data_dir, user_name, "long_ping_results_ON.txt")
+LONG_PING_OUTPUT_VPN_OFF = os.path.join(data_dir, user_name, "long_ping_results_OFF.txt")
 
 def kill_vpn():
-    """Kill any running OpenVPN processes."""
+    """Mata qualquer processo OpenVPN em execução."""
     subprocess.run(["pkill", "-f", "openvpn"], capture_output=True)
     
 def start_vpn():
-    return subprocess.Popen(OPENVPN_CMD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    """Inicia o OpenVPN."""
+    stdout = subprocess.PIPE
+    stderr = None
+    if DEBUG:
+        stdout, stderr = stderr, stdout
+    return subprocess.Popen(OPENVPN_CMD, stdout=stdout, stderr=stderr)
 
 def is_vpn_running():
-    """Check if OpenVPN is already running."""
+    """Verifica se o OpenVPN já está rodando."""
     try:
         subprocess.run(["pgrep", "openvpn"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except subprocess.CalledProcessError:
         return False
 
+# novas funcoes pro ping paralelo
 
-def run_ping(host, count=10):
-    """Run ping and parse latency, jitter, packet loss."""
+def get_ping_cmd(host: str) -> str:
+    system = platform.system().lower()
+    duration = 1800 
+
+    if system == "windows":
+        # -n: number of echo requests
+        count = duration  
+        return ["ping", "-n", str(count), host]
+    elif system in ("linux", "darwin"):  # macOS reports as 'Darwin'
+        # -c: number of pings
+        count = duration
+        return ["ping", "-c", str(count), host]
+    else:
+        raise OSError(f"Unsupported OS: {system}")
+
+def start_long_ping(host, duration, output_file):
+    """Inicia um ping longo em paralelo e salva a saída em um arquivo."""
+    print(f"--- [PING PARALELO] Iniciando ping longo para {host} ({duration}s) ---")
+    print(f"--- [PING PARALELO] Saída será salva em: {output_file} ---")
+    
+    cmd = get_ping_cmd(PING_HOST)
+    
+    f_out = open(output_file, 'a+', buffering=1) 
+    process = subprocess.Popen(
+        cmd,
+        stdout=f_out,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    return process, f_out #
+
+def stop_long_ping(process, file_handle):
+    """Para o processo de ping longo e fecha o arquivo."""
+    print("--- [PING PARALELO] Parando ping longo... ---")
     try:
-        
-        if DEBUG:
-            result = subprocess.run(
-                TRACEROUTE_CMD,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            output = result.stdout
-            
-            print(output)
-                
-        result = subprocess.run(
-            ["ping", "-c", str(count), host],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        output = result.stdout
-
-        # Parse packet loss
-        loss_line = [l for l in output.splitlines() if "packet loss" in l][0]
-        packet_loss = float(loss_line.split("%")[0].split()[-1])
-
-        # Parse rtt stats
-        rtt_line = [l for l in output.splitlines() if "rtt" in l or "round-trip" in l][0]
-        stats = rtt_line.split("=")[1].split()[0].split("/")
-        latency_avg = float(stats[1])  # avg latency (ms)
-        latency_jitter = float(stats[3]) 
-
-        return latency_avg, latency_jitter, packet_loss
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
     except Exception as e:
-        print(f"[PING ERROR] {e}")
-        return None, None, None
+        print(f"[ERRO ao parar o ping] {e}")
+        
+    if not file_handle.closed:
+        file_handle.close()
+    print("--- [PING PARALELO] Parado. ---")
 
+# iperf
 
 def run_iperf_tcp(server, port=8787, duration=10):
-    """Run iperf TCP test and return throughput in Mbps."""
+    """Roda o iperf TCP e retorna o throughput em Mbps."""
     try:
         result = subprocess.run(
             ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)],
@@ -138,18 +150,15 @@ def run_iperf_tcp(server, port=8787, duration=10):
         )
         output_csv = result.stdout.strip()
         values = output_csv.split(',')
-        
         bps = float(values[-1])
-        
         throughput_mbps = bps / 1e6
         return throughput_mbps
     except Exception as e:
         print(f"[IPERF TCP ERROR] {e}")
         return None
 
-
 def run_iperf_udp(server, port=8787, duration=10, bitrate="10M"):
-    """Run iperf UDP test and return throughput, jitter, loss."""
+    """Roda o iperf UDP e retorna throughput, jitter, loss."""
     try:
         result = subprocess.run(
             ["iperf", "-c", server, "-p", str(port), "-J", "-t", str(duration), "-u", "-b", bitrate],
@@ -169,9 +178,10 @@ def run_iperf_udp(server, port=8787, duration=10, bitrate="10M"):
         print(f"[IPERF UDP ERROR] {e}")
         return None, None, None
 
+# funcao de log
 
 def write_to_csv(row, file):
-    """Append results to CSV file."""
+    """Adiciona uma linha de resultado ao arquivo CSV."""
     file_exists = os.path.isfile(file)
 
     with open(file, "a", newline="") as f:
@@ -184,51 +194,47 @@ def write_to_csv(row, file):
                 "udp_throughput_mbps", "udp_jitter_ms", "udp_loss_%"
             ])
         writer.writerow(row)
+    print(f"salvou em {file}")
 
+# teste principal
 
 def run_all_tests(label, skip_udp = False):
-    """Run ping + iperf TCP + iperf UDP and log results."""
+    """Roda APENAS o iperf TCP/UDP e loga os resultados."""
     timestamp = datetime.now().isoformat()
     pretty_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    latency, jitter, loss = run_ping(PING_HOST, PING_COUNT)
-    
-    print("=" * 70)
-    print(f"Time: {pretty_time} | Test: {label}")
-    print(f"PING -> Latency: {latency:.2f} ms | Jitter: {jitter:.2f} ms | Loss: {loss:.2f} %")
-    
-    result = [
-        timestamp, label,
-        latency, jitter, loss,
-        
-    ]
+    # ping removido daqui
+    latency, jitter, loss = None, None, None
     
     tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
     
-    if tcp_throughput is not None: 
-        print(f"iperf TCP  -> Throughput: {tcp_throughput:.2f} Mbps")
-        result.extend([tcp_throughput])
-    else:
-        print("Could not run iperf tcp test, check if the server is online")
-    
-    if not skip_udp: 
+    if not skip_udp:
         udp_throughput, udp_jitter, udp_loss = run_iperf_udp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
-        print(f"iperf UDP  -> Throughput: {udp_throughput:.2f} Mbps | Jitter: {udp_jitter:.2f} ms | Loss: {udp_loss:.2f} %")
-        
-        result.extend([tcp_throughput, udp_throughput, udp_jitter, udp_loss])
-    
-    write_to_csv(result, LOCAL_OUTPUT_CSV)
+    else:
+        udp_throughput, udp_jitter, udp_loss = None, None, None
 
+    print("=" * 70)
+    print(f"Time: {pretty_time} | Test: {label}")
+    if tcp_throughput is not None:
+        print(f"iperf TCP  -> Throughput: {tcp_throughput:.2f} Mbps")
+    else:
+        print("iperf TCP  -> Teste falhou.")
+
+    # monta a linha do csv com none pro ping
+    row = [
+        timestamp, label,
+        latency, jitter, loss,
+        tcp_throughput,
+        udp_throughput, udp_jitter, udp_loss
+    ]
+    
+    write_to_csv(row, LOCAL_OUTPUT_CSV)
+
+# loop principal
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script with debug flag")
-
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug mode",
-    )
-
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
     DEBUG = args.debug
     
@@ -237,39 +243,85 @@ if __name__ == "__main__":
         
     if os.geteuid() != 0:
         print("This script requires sudo. Re-launching...")
-        
-        args = ['sudo', sys.executable] + sys.argv
-        
-        # Replace the current process with the new one
+        python_path = sys.executable
+        if 'VIRTUAL_ENV' in os.environ:
+             python_path = os.path.join(os.environ['VIRTUAL_ENV'], 'bin', 'python3')
+
+        args = ['sudo', python_path] + sys.argv
         os.execvp(args[0], args)
     
-    print("=== VPN Impact Test ===")
-    print("Results will be saved to:", LOCAL_OUTPUT_CSV)
-    print("Press Ctrl+C to stop.\n")
+    print("=== VPN Impact Test (Parallel Ping) ===")
+    print(f"Resultados do iperf serão salvos em: {LOCAL_OUTPUT_CSV}")
+    print(f"Ping longo (VPN ON) será salvo em: {LONG_PING_OUTPUT_VPN_ON}")
+    print(f"Ping longo (VPN OFF) será salvo em: {LONG_PING_OUTPUT_VPN_OFF}")
+    print("Pressione Ctrl+C para parar.\n")
     
     skip_udp = True
+    ping_proc = None
+    ping_file = None
 
     try:
         while True:
             kill_vpn()
             
-            print("\n[VPN ON] Starting VPN...")
+            print("\n[SESSÃO VPN ON] Iniciando VPN...")
             vpn_proc = start_vpn()
-            time.sleep(INTERVAL)
+            time.sleep(WAIT_AFTER_VPN) 
 
-            run_all_tests("VPN_ON", skip_udp= skip_udp)
-
-            kill_vpn()
-
-            time.sleep(INTERVAL)
+            # inico ping paralelo
+            ping_proc, ping_file = start_long_ping(PING_HOST, SESSION_DURATION_SECONDS, LONG_PING_OUTPUT_VPN_ON)
             
-            print("\n[VPN OFF] Running tests...")
-            run_all_tests("VPN_OFF", skip_udp= skip_udp)
-
-            time.sleep(INTERVAL)
+            session_start_time = time.time()
+            print(f"[SESSÃO VPN ON] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
             
+            while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
+                run_all_tests("VPN_ON", skip_udp=skip_udp)
+                
+                poll = ping_proc.poll()
+                
+                if poll is not None:
+                    print(f"[AVISO] Ping longo (ON) parou inesperadamente. {poll}")
+                    break
+                
+                time.sleep(INTERVAL)
+
+            print("[SESSÃO VPN ON] Sessão de 30 min finalizada.")
+            stop_long_ping(ping_proc, ping_file)
             kill_vpn()
+            time.sleep(INTERVAL)
+
+            print("\n[SESSÃO VPN OFF] Garantindo que VPN está parada.")
+            kill_vpn()
+            
+            # inico ping paralelo
+            ping_proc, ping_file = start_long_ping(PING_HOST, SESSION_DURATION_SECONDS, LONG_PING_OUTPUT_VPN_OFF)
+
+            session_start_time = time.time()
+            print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
+            
+            while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
+                run_all_tests("VPN_OFF", skip_udp=skip_udp)
+
+                if ping_proc.poll() is not None:
+                    print("[AVISO] Ping longo (OFF) parou inesperadamente.")
+                    break
+
+                time.sleep(INTERVAL)
+            
+            print("[SESSÃO VPN OFF] Sessão de 30 min finalizada.")
+            stop_long_ping(ping_proc, ping_file)
+            
+            print(f"\n=== Ciclo completo (ON/OFF). Reiniciando em {INTERVAL}s... ===")
+            time.sleep(INTERVAL)
 
     except KeyboardInterrupt:
-        print("\nStopped by user.")
+        print("\nParado pelo usuário.")
+        if ping_proc and ping_file:
+            stop_long_ping(ping_proc, ping_file)
+        kill_vpn()
+        print("Script finalizado.")
+    except Exception as e:
+        print(f"\n[ERRO FATAL] Ocorreu um erro: {e}")
+        if ping_proc and ping_file:
+            stop_long_ping(ping_proc, ping_file)
         kill_vpn()
