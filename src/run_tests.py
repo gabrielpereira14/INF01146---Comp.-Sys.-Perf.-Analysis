@@ -18,7 +18,6 @@ load_env_manual(os.path.join(PROJECT_ROOT, '.env') ) # carregamento do .env
 
 USER_NAME = os.getenv('USER_NAME')
 if USER_NAME:
-    print(f"Hello, {USER_NAME}!")
     USER_NAME = USER_NAME.lower()
 else:
     print("Could not find the 'USER_NAME' variable in the .env file.")
@@ -84,6 +83,13 @@ def run_iperf_tcp(server, port=8787, duration=10):
         )
         output_csv = result.stdout.strip()
         values = output_csv.split(',')
+        
+        if 'tcp connect failed' in result.stderr and not output_csv:
+            print(f"[IPERF TCP ERROR] Falha ao conectar no servidor, garanta que o servidor esteja rodando")
+            print(result.stderr)
+            print(result.stdout)
+            return None
+        
         bps = float(values[-1])
         throughput_mbps = bps / 1e6
         return throughput_mbps
@@ -116,7 +122,7 @@ def start_iperf_test(label : str):
         print(f"[IPERF TCP]: Resultado salvo com sucesso")
     else:
         print("[IPERF TCP] Teste falhou.")
-
+        exit(1)
     return
 
 def ensure_privileges():
@@ -165,6 +171,7 @@ if __name__ == "__main__":
         
     ensure_privileges()
     
+    print(f"Hello, {USER_NAME}!")
     print("=== VPN Impact Test ===")
     print(f"Resultados do iperf serão salvos em: {IPERF_TEST_OUTPUT_FILE_PATH}")
     print(f"Resultados do ping serão salvos em: {PING_TEST_OUTPUT_FILE_PATH}")
@@ -192,7 +199,7 @@ if __name__ == "__main__":
                 
                 poll = ping_proc.poll()
                 
-                if poll is not None:
+                if poll is not None and poll != 0:
                     print(f"[AVISO] Ping longo (ON) parou inesperadamente. {poll}")
                     break
                 
@@ -214,7 +221,7 @@ if __name__ == "__main__":
             while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
                 start_iperf_test("VPN_OFF")
 
-                if ping_proc.poll() is not None:
+                if poll is not None and poll != 0:
                     print("[AVISO] Ping longo (OFF) parou inesperadamente.")
                     break
 
