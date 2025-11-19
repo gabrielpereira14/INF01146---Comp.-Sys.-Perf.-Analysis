@@ -35,6 +35,7 @@ INTERVAL = 5
 
 PING_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "ping_results.csv")
 IPERF_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "iperf_results.csv")   
+IPERF_TEST_OUTPUT_REVERSE = os.path.join(DATA_DIR, USER_NAME, "iperf_results_reversed.csv")   
 
 IPERF_SERVER = "pcad.inf.ufrgs.br" 
 IPERF_PORT = 8787     
@@ -72,11 +73,14 @@ def stop_ping_test(process):
     
     print("--- [PING] Parado. ---")
 
-def run_iperf_tcp(server, port=8787, duration=10):
+def run_iperf_tcp(server, port=8787, duration=10, reverse= False):
     """Roda o iperf TCP e retorna o throughput em Mbps."""
+    cmd = ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)]
+    if reverse:
+        cmd.insert(9, "-R")
     try:
         result = subprocess.run(
-            ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)],
+            cmd,
             capture_output=True,
             text=True,
             check=True
@@ -109,19 +113,23 @@ def write_to_csv(row, file):
             ])
         writer.writerow(row)
             
-def start_iperf_test(label : str):
-    tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION)
+def start_iperf_test(label : str, reverse : bool):
+    tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION, reverse)
+
+    log_label = f"IPERF TCP{ " REVERSO" if reverse else ""}"
 
     if tcp_throughput is not None:
-        print(f" [IPERF TCP] Throughput: {tcp_throughput:.2f} Mbps")
+        print(f" [{log_label}] Throughput: {tcp_throughput:.2f} Mbps")
         timestamp = datetime.now().isoformat()
         row = [
             timestamp, label, tcp_throughput,
         ]
-        write_to_csv(row, IPERF_TEST_OUTPUT_FILE_PATH)           
-        print(f"[IPERF TCP]: Resultado salvo com sucesso")
+        
+        output_file_path = IPERF_TEST_OUTPUT_REVERSE if reverse else IPERF_TEST_OUTPUT_FILE_PATH
+        write_to_csv(row, output_file_path)           
+        print(f"[{log_label}]: Resultado salvo com sucesso")
     else:
-        print("[IPERF TCP] Teste falhou.")
+        print(f"[{log_label}] Teste falhou.")
         exit(1)
     return
 
@@ -180,6 +188,7 @@ if __name__ == "__main__":
     skip_udp = True
     ping_proc = None
     ping_file = None
+    reverse = False
 
     try:
         while True:
@@ -194,8 +203,10 @@ if __name__ == "__main__":
             session_start_time = time.time()
             print(f"[SESSÃO VPN ON] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {IPERF_DURATION}s...")
             
+            reverse = not reverse
+            
             while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                start_iperf_test("VPN_ON")
+                start_iperf_test("VPN_ON", reverse)
                 
                 poll = ping_proc.poll()
                 
@@ -219,7 +230,7 @@ if __name__ == "__main__":
             print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
             
             while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                start_iperf_test("VPN_OFF")
+                start_iperf_test("VPN_OFF", reverse)
 
                 if poll is not None and poll != 0:
                     print("[AVISO] Ping longo (OFF) parou inesperadamente.")
