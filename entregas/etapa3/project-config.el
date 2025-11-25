@@ -10,22 +10,22 @@
 
 (require 'use-package)
 
-;; --- Reveal.js ---
-(use-package ox-reveal
-  :ensure t
-  :config
-  (setq org-reveal-root "https://cdn.jsdelivr.net/npm/reveal.js@4/"))
-
-;; --- Org-babel Python support ---
+;; --- Org-mode + Babel Python ---
 (use-package org
   :ensure t
   :config
+  ;; Enable Python execution in Org-babel
   (org-babel-do-load-languages
    'org-babel-load-languages
    '((python . t)))
 
   (setq org-babel-python-command "python3")
   (setq org-confirm-babel-evaluate nil)
-  (add-hook 'org-babel-after-execute-hook 'org-display-inline-images 'append))
 
+  ;; Display images automatically after executing blocks
+  (add-hook 'org-babel-after-execute-hook
+            'org-display-inline-images
+            'append))
+
+;; Allow exporting using Babel blocks
 (setq org-export-use-babel t)

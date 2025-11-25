@@ -12,10 +12,9 @@
 #+TITLE: Medição do impacto de uma infraestrutura de VPN na taxa de transmissão e na latência
 #+AUTHOR: Ester Crestani, Gabriel Pereira e Júlia Pimentel
 #+DATE: 30/11/2025
-#+OPTIONS: toc:nil
-#+OPTIONS: H:2
+#+OPTIONS: toc:nil H:2
 
-* Medição do impacto da infraestrutura de VPN da UFRGS na taxa de transmissão e na latência :noexport:
+* Medição do impacto da infraestrutura de VPN da UFRGS na taxa de transmissão e na latência 
 :PROPERTIES:
 :BEAMER_env: ignoreheading
 :END:
@@ -295,7 +294,7 @@
           kill_vpn()
   #+END_SRC
 
-** Geração de gráficos :noexport:
+** Geração de gráficos 
 *** Setup
 #+BEGIN_SRC python
 import pandas as pd
@@ -472,8 +471,11 @@ Execução simultânea de ping e iperf através de um script que alterna entre:
 
 ** Dados coletados
 - Coleta automática de: latência, jitter, perda de pacotes (ping), throughput TCP e UDP (iperf3)
-- Salvamento dos resultados em .csv
-  Arquivos: =vpn_test_results.csv= e .csv
+- Dados coletados por integrante do grupo, disponiveis dentro da pasta data
+- Arquivos: 
+    - =ping_results.csv=
+    - =iperf_results.csv=
+    - =iperf_results_reversed.csv=
 
 ** Ambiente de testes
 - Servidor iperf: pcad.inf.ufrgs.br
@@ -483,7 +485,7 @@ Autenticação automática via arquivo pass.txt
 Intervalos entre testes: 5 segundos
 Duração de cada medição: 10 segundos
 
-- Testes realziados em diferentes dias e horários para rmelhor  amostragem
+- Testes realizados em diferentes dias e horários para melhor amostragem
 
 ** Material para medição
 # Adicionar Script em python utilizado para solicitar as medidas #
@@ -496,9 +498,8 @@ Duração de cada medição: 10 segundos
 - Gerar novas análises e indicadores
 - Preparar análise crítica para etapa final
 
-** Slide 3 exemplo para imagem
+#** Slide 3 exemplo para imagem
 
-#+ATTR_HTML: :width 400px
-[[file:grafico.png]]
+#[[file:grafico.png]]
 
-Aqui vai a imagem do slide. 
+#Aqui vai a imagem do slide. 
