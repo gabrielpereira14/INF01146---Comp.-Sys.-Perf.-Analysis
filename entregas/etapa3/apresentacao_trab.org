@@ -8,24 +8,25 @@
 #+LATEX_HEADER: \setbeamertemplate{footline}{}
 #+LATEX_HEADER: \setbeamertemplate{navigation symbols}{}
 #+BEAMER_FRAME_LEVEL: 2
+#+PROPERTY: header-args :python :var ORGDIR=(file-name-directory buffer-file-name) :exports results  
 
 #+TITLE: Medição do impacto de uma infraestrutura de VPN na taxa de transmissão e na latência
 #+AUTHOR: Ester Crestani, Gabriel Pereira e Júlia Pimentel
 #+DATE: 30/11/2025
-#+OPTIONS: toc:nil H:2
+#+OPTIONS: toc:nil H:2 eval
 
-* Medição do impacto da infraestrutura de VPN da UFRGS na taxa de transmissão e na latência 
+* Medição do impacto da infraestrutura de VPN da UFRGS na taxa de transmissão e na latência :noexport:
 :PROPERTIES:
 :BEAMER_env: ignoreheading
 :END:
 
   O objetivo deste trabalho é avaliar o impacto da infraestrutura de VPN da UFRGS, utilizada através do OpenVPN, sobre o throughput, latência, jitter e perda de pacotes.
 
-** Ferramentas utilizadas :noexport:
+** Ferramentas utilizadas 
   - iperf para a coleta de throughput;
   - ping para a coleta de latência, jitter e perda de pacotes.
 
-** Metodologia :noexport:
+** Metodologia 
   Foram desenvolvidos dois scripts para a coleta de dados. O principal é o run_test.py, ele contém as funções que iniciam e param a execução da VPN, além de 
   chamar o script que faz os experimentos do ping. Também contém as funções para a execução dos testes do iperf. Tentou-se separar a parte do iperf em um terceiro script para
   manter uma melhor modularização, entretanto 
@@ -296,38 +297,75 @@
 
 ** Geração de gráficos 
 *** Setup
-#+BEGIN_SRC python
-import pandas as pd
-import os
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import seaborn as sns
-import sys
+#+BEGIN_SRC python :eval yes :exports :results output :session graphs
+  import sys
+  import pandas as pd
+  import os
+  import matplotlib.pyplot as plt
+  import matplotlib.dates as mdates
+  import seaborn as sns
 
-SCRIPT_DIR = os.getcwd()
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-DATA_ROOT = f"{PROJECT_ROOT}/data"
-DATE_FMT = mdates.DateFormatter("%d/%m")
+  SCRIPT_DIR = ORGDIR 
+  PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+  DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+  DATE_FMT = mdates.DateFormatter("%d/%m")
 
-def load_user_data(user):
-    csv = f"{DATA_ROOT}/{user}/vpn_test_results.csv"
+  print(SCRIPT_DIR)
+  print(DATA_ROOT)
+
+  def load_ping_data(user):
+    csv = f"{DATA_ROOT}/{user}/ping_results.csv"
     if not os.path.exists(csv):
-        raise FileNotFoundError(csv)
-    df = pd.read_csv(csv, parse_dates=["timestamp"])
-    df["date"] = df["timestamp"].dt.date
+      raise FileNotFoundError(csv)
+  
+    df = pd.read_csv(csv)
+    df["timestamp"] = pd.to_datetime(
+      df["timestamp"],
+      format="ISO8601",
+      errors="raise"
+    )
     return df
 
-def ensure_img_dir(user):
+  def load_iperf_data(user):
+    csv = f"{DATA_ROOT}/{user}/iperf_results.csv"
+    if not os.path.exists(csv):
+      raise FileNotFoundError(csv)
+
+    df = pd.read_csv(csv)
+    df["timestamp"] = pd.to_datetime(
+      df["timestamp"],
+      format="ISO8601",
+      errors="raise"
+    )
+    return df
+
+  def load_iperf_rev_data(user):
+    csv = f"{DATA_ROOT}/{user}/iperf_results_reversed.csv"
+    if not os.path.exists(csv):
+      raise FileNotFoundError(csv)
+    
+    df = pd.read_csv(csv)
+    df["timestamp"] = pd.to_datetime(
+      df["timestamp"],
+      format="ISO8601",
+      errors="raise"
+    )
+
+  def ensure_img_dir(user):
     d = f"{PROJECT_ROOT}/{user}/images"
     os.makedirs(d, exist_ok=True)
     return d
 #+END_SRC
 
+#+RESULTS:
+: /home/gabip/perf/entregas/etapa3/
+: /home/gabip/perf/data
+
 *** Jitter Plot Function
 
 #+NAME: plot_jitter
-#+BEGIN_SRC python :var user=""
-df = load_user_data(user)
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :results file graphics  :session graphs :exports both
+df = load_ping_data(user)
 img_dir = ensure_img_dir(user)
 
 vpn_fixed_day = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
@@ -338,7 +376,7 @@ up = jitter.quantile(0.99)
 df_j = df_j[(jitter <= up)]
 df_j["timestamp"] = pd.to_datetime(df_j["timestamp"])
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = plt.subplots(1, 2, figsize=(image_size))
 sns.lineplot(data=df_j.query("test_label == 'VPN_ON'"), x="timestamp", y="ping_jitter_ms", ax=axes[0])
 axes[0].set_title("Jitter with VPN")
 axes[0].set_xlabel("Date")
@@ -359,25 +397,25 @@ plt.tight_layout()
 plt.savefig(path, dpi=300)
 plt.close()
 
-return path
+path
 #+END_SRC
+
+#+RESULTS: plot_jitter
+[[file:/home/gabip/perf/gabriel/images/jitter_gabriel.png]]
 
 *** Latency Plot Function
 
 #+NAME: plot_latency
-#+BEGIN_SRC python :var user=""
-df = load_user_data(user)
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :results file graphics :session graphs :exports both
+df = load_ping_data(user)
 img_dir = ensure_img_dir(user)
-
-vpn_fixed = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
-df_l = df[df['timestamp'] >= vpn_fixed].copy()
 
 lat = df['ping_latency_ms']
 lb = lat.quantile(0.01)
 ub = lat.quantile(0.99)
-df_l = df_l[(lat >= lb) & (lat <= ub)]
+df_l = df[(df['ping_latency_ms'] >= lb) & (df['ping_latency_ms'] <= ub)]
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = plt.subplots(1, 2, figsize=image_size)
 sns.violinplot(data=df_l.query("test_label == 'VPN_ON'"), x="test_label", y="ping_latency_ms", ax=axes[0], cut=0)
 axes[0].set_title("Latency with VPN")
 
@@ -386,23 +424,26 @@ axes[1].set_title("Latency without VPN")
 
 path = f"{img_dir}/latency_{user}.png"
 plt.tight_layout()
-plt.savefig(path, dpi=300)
+plt.savefig(path, dpi=150)
 plt.close()
 
-return path
+path
 #+END_SRC
 
-*** Throughput Plot Function
+#+RESULTS: plot_latency
+[[file:/home/gabip/perf/gabriel/images/latency_gabriel.png]]
+
+*** Throughput Upload Plot Function
 
 #+NAME: plot_throughput
-#+BEGIN_SRC python :var user=""
-df = load_user_data(user)
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :results file graphics :session graphs :exports both
+df = load_iperf_data(user)
 img_dir = ensure_img_dir(user)
 
 df_t = df.query("tcp_throughput_mbps.notna()").copy()
 df_t["timestamp"] = pd.to_datetime(df_t["timestamp"])
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig, axes = plt.subplots(1, 2, figsize=image_size)
 sns.lineplot(data=df_t.query("test_label == 'VPN_ON'"), x="timestamp", y="tcp_throughput_mbps", ax=axes[0])
 axes[0].set_title("Throughput with VPN")
 axes[0].set_xlabel("Date")
@@ -420,41 +461,14 @@ for ax in axes:
 
 path = f"{img_dir}/throughput_{user}.png"
 plt.tight_layout()
-plt.savefig(path, dpi=300)
+plt.savefig(path, dpi=150)
 plt.close()
 
-return path
+path
 #+END_SRC
 
-*** Latency Heatmap Function
-
-#+NAME: plot_heatmap
-#+BEGIN_SRC python :var user=""
-df = load_user_data(user)
-img_dir = ensure_img_dir(user)
-
-vpn_fixed = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
-df_l = df[df['timestamp'] >= vpn_fixed].copy()
-df_l['date'] = df_l['timestamp'].dt.date
-df_l['hour'] = df_l['timestamp'].dt.hour
-
-p = df_l.pivot_table(values='ping_latency_ms', index='date', columns='hour', aggfunc='mean')
-
-plt.figure(figsize=(14, 8))
-sns.heatmap(p, annot=True, fmt=".1f", cmap="rocket_r", linewidths=.5)
-
-plt.xlabel("Hour")
-plt.ylabel("Date")
-plt.title("Latency Heatmap")
-
-path = f"{img_dir}/heatmap_{user}.png"
-plt.tight_layout()
-plt.savefig(path, dpi=300)
-plt.close()
-
-return path
-#+END_SRC
-
+#+RESULTS: plot_throughput
+[[file:/home/gabip/perf/gabriel/images/throughput_gabriel.png]]
 
 * Presentation 
 :PROPERTIES:
@@ -495,11 +509,12 @@ Duração de cada medição: 10 segundos
 
 ** Próximos passos:
 - Realizar mais medições em diferentes horários
-- Gerar novas análises e indicadores
+- Gerar novas análises e indicadoresP
 - Preparar análise crítica para etapa final
 
-#** Slide 3 exemplo para imagem
+** Slide 3 exemplo para imagem
 
-#[[file:grafico.png]]
-
-#Aqui vai a imagem do slide. 
+#+CALL: plot_latency(user="gabriel", image_size='(7 3)) :session graphs
+#+ATTR_LATEX: :width 1\textwidth
+#+RESULTS:
+[[file:/home/gabip/perf/gabriel/images/latency_gabriel.png]]
