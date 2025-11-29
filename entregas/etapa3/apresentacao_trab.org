@@ -31,444 +31,1051 @@
   chamar o script que faz os experimentos do ping. Também contém as funções para a execução dos testes do iperf. Tentou-se separar a parte do iperf em um terceiro script para
   manter uma melhor modularização, entretanto 
   - Execução simultânea de ping e iperf;
-  
-*** Script principal - run_test.py
+    
+*** Coleta dos dados 
+
+**** Script principal - run_test.py
   #+BEGIN_SRC python
-  import subprocess
-  import time
-  import sys
-  import os
-  import argparse
-  import platform
-  from utils.env_loader import load_env_manual
+    import subprocess
+    import time
+    import sys
+    import os
+    import argparse
+    import platform
+    from utils.env_loader import load_env_manual
 
-  import csv     
-  from datetime import datetime     
-          
-  SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-  PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-  SOURCE_FOLDER = f"{PROJECT_ROOT}/src"  
-  DATA_DIR = f"{PROJECT_ROOT}/data"  
-      
-  load_env_manual(os.path.join(PROJECT_ROOT, '.env') ) # carregamento do .env
+    import csv     
+    from datetime import datetime     
 
-  USER_NAME = os.getenv('USER_NAME')
-  if USER_NAME:
-      USER_NAME = USER_NAME.lower()
-  else:
-      print("Could not find the 'USER_NAME' variable in the .env file.")
-      
-  os.makedirs(f"{DATA_DIR}/{USER_NAME}", exist_ok=True)
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+    SOURCE_FOLDER = f"{PROJECT_ROOT}/src"  
+    DATA_DIR = f"{PROJECT_ROOT}/data"  
 
-  OPEN_VPN_CONFIG_PATH = os.path.join(SCRIPT_DIR, "ufrgs.ovpn")
-  PASS_PATH = os.path.join(SCRIPT_DIR, "pass.txt")
-  OPENVPN_CMD = ["sudo", "openvpn", "--config", OPEN_VPN_CONFIG_PATH , "--auth-user-pass", PASS_PATH]
+    load_env_manual(os.path.join(PROJECT_ROOT, '.env') ) # carregamento do .env
 
-  WAIT_TIME_AFTER_VPN_TOGGLE = 10
-  SESSION_DURATION_SECONDS = 240
-  IPERF_DURATION = 10
-  INTERVAL = 5  
+    USER_NAME = os.getenv('USER_NAME')
+    if USER_NAME:
+        USER_NAME = USER_NAME.lower()
+    else:
+        print("Could not find the 'USER_NAME' variable in the .env file.")
 
-  PING_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "ping_results.csv")
-  IPERF_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "iperf_results.csv")   
-  IPERF_TEST_OUTPUT_REVERSE = os.path.join(DATA_DIR, USER_NAME, "iperf_results_reversed.csv")   
+    os.makedirs(f"{DATA_DIR}/{USER_NAME}", exist_ok=True)
 
-  IPERF_SERVER = "pcad.inf.ufrgs.br" 
-  IPERF_PORT = 8787     
+    OPEN_VPN_CONFIG_PATH = os.path.join(SCRIPT_DIR, "ufrgs.ovpn")
+    PASS_PATH = os.path.join(SCRIPT_DIR, "pass.txt")
+    OPENVPN_CMD = ["sudo", "openvpn", "--config", OPEN_VPN_CONFIG_PATH , "--auth-user-pass", PASS_PATH]
 
-  def kill_vpn() -> None:
-      """Mata qualquer processo OpenVPN em execução."""
-      subprocess.run(["pkill", "-f", "openvpn"], capture_output=True)
-      
-  def start_vpn() -> subprocess.Popen:
-      """Inicia o OpenVPN."""
-      stdout = subprocess.PIPE
-      stderr = None
-      if DEBUG:
-          stdout = None
-      return subprocess.Popen(OPENVPN_CMD, stdout=stdout, stderr=stderr)
+    WAIT_TIME_AFTER_VPN_TOGGLE = 10
+    SESSION_DURATION_SECONDS = 240
+    IPERF_DURATION = 10
+    INTERVAL = 5  
 
-  def start_ping_test(duration: int, label : str) -> subprocess.Popen:
-      cmd = [sys.executable, os.path.join(SOURCE_FOLDER, "run_ping_test.py"), "--duration", str(duration), "--output_path", PING_TEST_OUTPUT_FILE_PATH, "--label", label]
-      process = subprocess.Popen(
-          cmd,
-          stdout=subprocess.DEVNULL,
-          stderr=None,
-      )
-      return process
+    PING_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "ping_results.csv")
+    IPERF_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "iperf_results.csv")   
+    IPERF_TEST_OUTPUT_REVERSE = os.path.join(DATA_DIR, USER_NAME, "iperf_results_reversed.csv")   
 
-  def stop_ping_test(process):
-      """Para o processo de ping."""
-      print("--- [PING] Parando ping... ---")
-      try:
-          if process.poll() is None:
-              process.terminate()
-              process.wait()
-      except Exception as e:
-          print(f"[ERRO ao parar o ping] {e}")
-      
-      print("--- [PING] Parado. ---")
+    IPERF_SERVER = "pcad.inf.ufrgs.br" 
+    IPERF_PORT = 8787     
 
-  def run_iperf_tcp(server, port=8787, duration=10, reverse= False):
-      """Roda o iperf TCP e retorna o throughput em Mbps."""
-      cmd = ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)]
-      if reverse:
-          cmd.insert(9, "-R")
-      try:
-          result = subprocess.run(
-              cmd,
-              capture_output=True,
-              text=True,
-              check=True
-          )
-          output_csv = result.stdout.strip()
-          values = output_csv.split(',')
-          
-          if 'tcp connect failed' in result.stderr and not output_csv:
-              print(f"[IPERF TCP ERROR] Falha ao conectar no servidor, garanta que o servidor esteja rodando")
-              print(result.stderr)
-              print(result.stdout)
-              return None
-          
-          bps = float(values[-1])
-          throughput_mbps = bps / 1e6
-          return throughput_mbps
-      except Exception as e:
-          print(f"[IPERF TCP ERROR] {e}")
-          return None
+    def kill_vpn() -> None:
+        """Mata qualquer processo OpenVPN em execução."""
+        subprocess.run(["pkill", "-f", "openvpn"], capture_output=True)
 
-  def write_to_csv(row, file):
-      """Adiciona uma linha de resultado ao arquivo CSV."""
-      file_exists = os.path.isfile(file)
+    def start_vpn() -> subprocess.Popen:
+        """Inicia o OpenVPN."""
+        stdout = subprocess.PIPE
+        stderr = None
+        if DEBUG:
+            stdout = None
+        return subprocess.Popen(OPENVPN_CMD, stdout=stdout, stderr=stderr)
 
-      with open(file, "a", newline="") as f:
-          writer = csv.writer(f)
-          if not file_exists:
-              writer.writerow([
-                  "timestamp", "test_label", "tcp_throughput_mbps",
-              ])
-          writer.writerow(row)
-              
-  def start_iperf_test(label : str, reverse : bool):
-      tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION, reverse)
+    def start_ping_test(duration: int, label : str) -> subprocess.Popen:
+        cmd = [sys.executable, os.path.join(SOURCE_FOLDER, "run_ping_test.py"), "--duration", str(duration), "--output_path", PING_TEST_OUTPUT_FILE_PATH, "--label", label]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+        )
+        return process
 
-      log_label = f"IPERF TCP{ " REVERSO" if reverse else ""}"
+    def stop_ping_test(process):
+        """Para o processo de ping."""
+        print("--- [PING] Parando ping... ---")
+        try:
+            if process.poll() is None:
+                process.terminate()
+                process.wait()
+        except Exception as e:
+            print(f"[ERRO ao parar o ping] {e}")
 
-      if tcp_throughput is not None:
-          print(f" [{log_label}] Throughput: {tcp_throughput:.2f} Mbps")
-          timestamp = datetime.now().isoformat()
-          row = [
-              timestamp, label, tcp_throughput,
-          ]
-          
-          output_file_path = IPERF_TEST_OUTPUT_REVERSE if reverse else IPERF_TEST_OUTPUT_FILE_PATH
-          write_to_csv(row, output_file_path)           
-          print(f"[{log_label}]: Resultado salvo com sucesso")
-      else:
-          print(f"[{log_label}] Teste falhou.")
-          exit(1)
-      return
+        print("--- [PING] Parado. ---")
 
-  def ensure_privileges():
-      system = platform.system()
+    def run_iperf_tcp(server, port=8787, duration=10, reverse= False):
+        """Roda o iperf TCP e retorna o throughput em Mbps."""
+        cmd = ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)]
+        if reverse:
+            cmd.insert(9, "-R")
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            output_csv = result.stdout.strip()
+            values = output_csv.split(',')
 
-      print(f"Running on {system}")
+            if 'tcp connect failed' in result.stderr and not output_csv:
+                print(f"[IPERF TCP ERROR] Falha ao conectar no servidor, garanta que o servidor esteja rodando")
+                print(result.stderr)
+                print(result.stdout)
+                return None
 
-      if system == "Windows":
-          import ctypes
-          try:
-              is_admin = ctypes.windll.shell32.IsUserAnAdmin()
-          except:
-              is_admin = False
+            bps = float(values[-1])
+            throughput_mbps = bps / 1e6
+            return throughput_mbps
+        except Exception as e:
+            print(f"[IPERF TCP ERROR] {e}")
+            return None
 
-          if not is_admin:
-              args = " ".join(f'"{a}"' for a in sys.argv[1:])
-              cmd = [
-                  "powershell",
-                  "-Command",
-                  (
-                      f'Start-Process "{sys.executable}" '
-                      f'-ArgumentList "{args}" '
-                      f'-Verb RunAs -Wait'
-                  )
-              ]
+    def write_to_csv(row, file):
+        """Adiciona uma linha de resultado ao arquivo CSV."""
+        file_exists = os.path.isfile(file)
 
-              result = subprocess.run(cmd)
-              sys.exit(result.returncode or 0)
+        with open(file, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow([
+                    "timestamp", "test_label", "tcp_throughput_mbps",
+                ])
+            writer.writerow(row)
 
-      elif hasattr(os, "geteuid") and os.geteuid() != 0:
-          try:
-              result = subprocess.run(["sudo", sys.executable, *sys.argv])
-              sys.exit(result.returncode or 0)
-          except KeyboardInterrupt:
-              pass
-          sys.exit(1) 
+    def start_iperf_test(label : str, reverse : bool):
+        tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION, reverse)
 
-  if __name__ == "__main__":
-      parser = argparse.ArgumentParser(description="Script with debug flag")
-      parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-      args = parser.parse_args()
-      DEBUG = args.debug
-      
-      if DEBUG:
-          print("Debug: ON")
-          
-      ensure_privileges()
-      
-      print(f"Hello, {USER_NAME}!")
-      print("=== VPN Impact Test ===")
-      print(f"Resultados do iperf serão salvos em: {IPERF_TEST_OUTPUT_FILE_PATH}")
-      print(f"Resultados do ping serão salvos em: {PING_TEST_OUTPUT_FILE_PATH}")
-      print("Pressione Ctrl+C para parar.\n")
-      
-      skip_udp = True
-      ping_proc = None
-      ping_file = None
-      reverse = False
+        log_label = f"IPERF TCP{ " REVERSO" if reverse else ""}"
 
-      try:
-          while True:
-              kill_vpn()
-              
-              print("\n[SESSÃO VPN ON] Iniciando VPN...")
-              vpn_proc = start_vpn()
-              time.sleep(WAIT_TIME_AFTER_VPN_TOGGLE) 
+        if tcp_throughput is not None:
+            print(f" [{log_label}] Throughput: {tcp_throughput:.2f} Mbps")
+            timestamp = datetime.now().isoformat()
+            row = [
+                timestamp, label, tcp_throughput,
+            ]
 
-              ping_proc = start_ping_test(SESSION_DURATION_SECONDS, "VPN_ON")
-              
-              session_start_time = time.time()
-              print(f"[SESSÃO VPN ON] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {IPERF_DURATION}s...")
-              
-              reverse = not reverse
-              
-              while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                  start_iperf_test("VPN_ON", reverse)
-                  
-                  poll = ping_proc.poll()
-                  
-                  if poll is not None and poll != 0:
-                      print(f"[AVISO] Ping longo (ON) parou inesperadamente. {poll}")
-                      break
-                  
-                  time.sleep(INTERVAL)
+            output_file_path = IPERF_TEST_OUTPUT_REVERSE if reverse else IPERF_TEST_OUTPUT_FILE_PATH
+            write_to_csv(row, output_file_path)           
+            print(f"[{log_label}]: Resultado salvo com sucesso")
+        else:
+            print(f"[{log_label}] Teste falhou.")
+            exit(1)
+        return
 
-              print(f"[SESSÃO VPN ON] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
-              stop_ping_test(ping_proc)
-              kill_vpn()
-              time.sleep(INTERVAL)
+    def ensure_privileges():
+        system = platform.system()
 
-              print("\n[SESSÃO VPN OFF] Garantindo que VPN está parada.")
-              kill_vpn()
-              
-              ping_proc =  start_ping_test(SESSION_DURATION_SECONDS, "VPN_OFF")
+        print(f"Running on {system}")
 
-              session_start_time = time.time()
-              print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
-              
-              while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                  start_iperf_test("VPN_OFF", reverse)
+        if system == "Windows":
+            import ctypes
+            try:
+                is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+            except:
+                is_admin = False
 
-                  if poll is not None and poll != 0:
-                      print("[AVISO] Ping longo (OFF) parou inesperadamente.")
-                      break
+            if not is_admin:
+                args = " ".join(f'"{a}"' for a in sys.argv[1:])
+                cmd = [
+                    "powershell",
+                    "-Command",
+                    (
+                        f'Start-Process "{sys.executable}" '
+                        f'-ArgumentList "{args}" '
+                        f'-Verb RunAs -Wait'
+                    )
+                ]
 
-                  time.sleep(INTERVAL)
-              
-              print(f"[SESSÃO VPN OFF] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
-              stop_ping_test(ping_proc)
-              
-              print(f"\n=== Ciclo completo (ON/OFF). Reiniciando em {INTERVAL}s... ===")
-              time.sleep(INTERVAL)
+                result = subprocess.run(cmd)
+                sys.exit(result.returncode or 0)
 
-      except KeyboardInterrupt:
-          print("\nParado pelo usuário.")
-          if ping_proc:
-              stop_ping_test(ping_proc)
-          kill_vpn()
-          print("Script finalizado.")
-      except Exception as e:
-          exc_type, exc_obj, tb = sys.exc_info()
-          line = tb.tb_lineno
-          print(f"\n[ERRO FATAL] Ocorreu um erro: {e} na linha {line}")
-          if ping_proc:
-              stop_ping_test(ping_proc)
-          kill_vpn()
+        elif hasattr(os, "geteuid") and os.geteuid() != 0:
+            try:
+                result = subprocess.run(["sudo", sys.executable, *sys.argv])
+                sys.exit(result.returncode or 0)
+            except KeyboardInterrupt:
+                pass
+            sys.exit(1) 
+
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser(description="Script with debug flag")
+        parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+        args = parser.parse_args()
+        DEBUG = args.debug
+
+        if DEBUG:
+            print("Debug: ON")
+
+        ensure_privileges()
+
+        print(f"Hello, {USER_NAME}!")
+        print("=== VPN Impact Test ===")
+        print(f"Resultados do iperf serão salvos em: {IPERF_TEST_OUTPUT_FILE_PATH}")
+        print(f"Resultados do ping serão salvos em: {PING_TEST_OUTPUT_FILE_PATH}")
+        print("Pressione Ctrl+C para parar.\n")
+
+        skip_udp = True
+        ping_proc = None
+        ping_file = None
+        reverse = False
+
+        try:
+            while True:
+                kill_vpn()
+
+                print("\n[SESSÃO VPN ON] Iniciando VPN...")
+                vpn_proc = start_vpn()
+                time.sleep(WAIT_TIME_AFTER_VPN_TOGGLE) 
+
+                ping_proc = start_ping_test(SESSION_DURATION_SECONDS, "VPN_ON")
+
+                session_start_time = time.time()
+                print(f"[SESSÃO VPN ON] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {IPERF_DURATION}s...")
+
+                reverse = not reverse
+
+                while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
+                    start_iperf_test("VPN_ON", reverse)
+
+                    poll = ping_proc.poll()
+
+                    if poll is not None and poll != 0:
+                        print(f"[AVISO] Ping longo (ON) parou inesperadamente. {poll}")
+                        break
+
+                    time.sleep(INTERVAL)
+
+                print(f"[SESSÃO VPN ON] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
+                stop_ping_test(ping_proc)
+                kill_vpn()
+                time.sleep(INTERVAL)
+
+                print("\n[SESSÃO VPN OFF] Garantindo que VPN está parada.")
+                kill_vpn()
+
+                ping_proc =  start_ping_test(SESSION_DURATION_SECONDS, "VPN_OFF")
+
+                session_start_time = time.time()
+                print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
+
+                while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
+                    start_iperf_test("VPN_OFF", reverse)
+
+                    if poll is not None and poll != 0:
+                        print("[AVISO] Ping longo (OFF) parou inesperadamente.")
+                        break
+
+                    time.sleep(INTERVAL)
+
+                print(f"[SESSÃO VPN OFF] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
+                stop_ping_test(ping_proc)
+
+                print(f"\n=== Ciclo completo (ON/OFF). Reiniciando em {INTERVAL}s... ===")
+                time.sleep(INTERVAL)
+
+        except KeyboardInterrupt:
+            print("\nParado pelo usuário.")
+            if ping_proc:
+                stop_ping_test(ping_proc)
+            kill_vpn()
+            print("Script finalizado.")
+        except Exception as e:
+            exc_type, exc_obj, tb = sys.exc_info()
+            line = tb.tb_lineno
+            print(f"\n[ERRO FATAL] Ocorreu um erro: {e} na linha {line}")
+            if ping_proc:
+                stop_ping_test(ping_proc)
+            kill_vpn()
   #+END_SRC
 
-** Geração de gráficos 
-*** Setup
-#+BEGIN_SRC python :eval yes :exports :results output :session graphs
-  import sys
-  import pandas as pd
-  import os
-  import matplotlib.pyplot as plt
-  import matplotlib.dates as mdates
-  import seaborn as sns
-
-  SCRIPT_DIR = ORGDIR 
-  PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
-  DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
-  DATE_FMT = mdates.DateFormatter("%d/%m")
-
-  print(SCRIPT_DIR)
-  print(DATA_ROOT)
-
-  def load_ping_data(user):
-    csv = f"{DATA_ROOT}/{user}/ping_results.csv"
-    if not os.path.exists(csv):
-      raise FileNotFoundError(csv)
   
-    df = pd.read_csv(csv)
-    df["timestamp"] = pd.to_datetime(
-      df["timestamp"],
-      format="ISO8601",
-      errors="raise"
-    )
-    return df
+** Funcoes para plotar os graficos
+Como alguns gráficos serão usados em mais de um lugar mas com a fonte dos dados diferente, deixaremos esses gráficos encapsulados em funcoes que permitem o facil reuso.
 
-  def load_iperf_data(user):
-    csv = f"{DATA_ROOT}/{user}/iperf_results.csv"
-    if not os.path.exists(csv):
-      raise FileNotFoundError(csv)
+*** Setup
 
-    df = pd.read_csv(csv)
-    df["timestamp"] = pd.to_datetime(
-      df["timestamp"],
-      format="ISO8601",
-      errors="raise"
-    )
-    return df
+Bloco que importa as biblioteca necessárias e define as funcoes de importacao dos dados
 
-  def load_iperf_rev_data(user):
-    csv = f"{DATA_ROOT}/{user}/iperf_results_reversed.csv"
-    if not os.path.exists(csv):
-      raise FileNotFoundError(csv)
-    
-    df = pd.read_csv(csv)
-    df["timestamp"] = pd.to_datetime(
-      df["timestamp"],
-      format="ISO8601",
-      errors="raise"
-    )
+#+BEGIN_SRC python :eval yes :exports :results output :session graphs
+    import sys
+    import pandas as pd
+    import os
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import seaborn as sns
+    from scipy.stats import norm
 
-  def ensure_img_dir(user):
-    d = f"{PROJECT_ROOT}/{user}/images"
-    os.makedirs(d, exist_ok=True)
-    return d
+    SCRIPT_DIR = ORGDIR 
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+    DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+    DATE_FMT = mdates.DateFormatter("%d/%m")
+
+    def load_ping_data(user):
+        csv = f"{DATA_ROOT}/{user}/ping_results.csv"
+        if not os.path.exists(csv):
+            raise FileNotFoundError(csv)
+
+        df = pd.read_csv(csv)
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
+            format="ISO8601",
+            errors="raise"
+        )
+        return df
+
+    def load_iperf_data(user):
+        csv = f"{DATA_ROOT}/{user}/iperf_results.csv"
+        if not os.path.exists(csv):
+            raise FileNotFoundError(csv)
+
+        df = pd.read_csv(csv)
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
+            format="ISO8601",
+            errors="raise"
+        )
+        return df
+
+    def load_iperf_rev_data(user):
+        csv = f"{DATA_ROOT}/{user}/iperf_results_reversed.csv"
+        if not os.path.exists(csv):
+            raise FileNotFoundError(csv)
+
+        df = pd.read_csv(csv)
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
+            format="ISO8601",
+            errors="raise"
+        )
+        return df
+
+    def ensure_img_dir(user):
+        d = f"{PROJECT_ROOT}/data/{user}/images"
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def last_value_per_session(df, column):
+        df_sorted = df.sort_values("timestamp")
+        return (
+            df_sorted.groupby(["test_label", "session"])
+            .tail(1)[["timestamp", "test_label", column]]
+            .copy()
+        )
+
+    def label_line_end(ax, line, label=None, **kwargs):
+        x, y = line.get_xdata(), line.get_ydata()
+        label_text = label
+
+        xmin, xmax = ax.get_xlim()
+        xmax += (xmax - xmin) * 0.05
+        ax.set_xlim(xmin, xmax)
+
+        ax.text(
+            x[-1],
+            y[-1],
+            f" {label_text}",
+            color=line.get_color(),
+            fontsize=10,
+            va="center",
+            ha="left",
+            transform=ax.transData,
+            ,**kwargs,
+        )
 #+END_SRC
 
 #+RESULTS:
-: /home/gabip/perf/entregas/etapa3/
-: /home/gabip/perf/data
 
-*** Jitter Plot Function
+*** Jitter over time
+#+NAME: plot_jitter_over_time
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_ping_data(user)
+    img_dir = ensure_img_dir(user)
 
-#+NAME: plot_jitter
-#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :results file graphics  :session graphs :exports both
-df = load_ping_data(user)
-img_dir = ensure_img_dir(user)
+    df = last_value_per_session(df, "ping_jitter_ms")
+    df = df[df["ping_jitter_ms"].notna()].copy()
 
-vpn_fixed_day = df[df['test_label'] == 'VPN_ON']['timestamp'].min()
+    
+    df["lb"] = df.groupby("test_label")["ping_jitter_ms"].transform(lambda x: x.quantile(0.01))
+    df["ub"] = df.groupby("test_label")["ping_jitter_ms"].transform(lambda x: x.quantile(0.99))
+    df = df[(df["ping_jitter_ms"] >= df["lb"]) & (df["ping_jitter_ms"] <= df["ub"])]
+    df = df.drop(columns=["lb","ub"])
 
-df_j = df.query('timestamp >= "2025.10.01"').copy()
-jitter = df_j['ping_jitter_ms']
-up = jitter.quantile(0.99)
-df_j = df_j[(jitter <= up)]
-df_j["timestamp"] = pd.to_datetime(df_j["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.floor("H")
 
-fig, axes = plt.subplots(1, 2, figsize=(image_size))
-sns.lineplot(data=df_j.query("test_label == 'VPN_ON'"), x="timestamp", y="ping_jitter_ms", ax=axes[0])
-axes[0].set_title("Jitter with VPN")
-axes[0].set_xlabel("Date")
-axes[0].set_ylabel("ms")
+    z = norm.ppf((1 + ci_level) / 2)
 
-sns.lineplot(data=df_j.query("test_label == 'VPN_OFF'"), x="timestamp", y="ping_jitter_ms", ax=axes[1])
-axes[1].set_title("Jitter without VPN")
-axes[1].set_xlabel("Date")
-axes[1].set_ylabel("ms")
+    hourly = (
+        df.groupby(["test_label", "hour"])
+        .agg(mean=("ping_jitter_ms","mean"),
+             std=("ping_jitter_ms","std"),
+             count=("ping_jitter_ms","count"))
+        .reset_index()
+    )
 
-for ax in axes:
-    ax.xaxis.set_major_locator(mdates.DayLocator())
-    ax.xaxis.set_major_formatter(DATE_FMT)
-    ax.tick_params(axis='x', rotation=45)
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
 
-path = f"{img_dir}/jitter_{user}.png"
-plt.tight_layout()
-plt.savefig(path, dpi=300)
-plt.close()
+    labels = ["VPN_ON","VPN_OFF"]
 
-path
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+        
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+            )
+
+        ax.tick_params(axis='x', rotation=45)
+        ax.xaxis.set_major_formatter(DATE_FMT)
+        ax.xaxis.set_major_locator(mdates.DayLocator())
+        ax.set_title(f"Jitter over time – {label}")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("ms")
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/jitter_over_time_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
 #+END_SRC
+
+#+RESULTS: plot_jitter_over_time
+[[file:/home/gabip/perf/data/gabriel/images/jitter_over_time_gabriel.png]]
+
+*** Jitter per hour
+#+NAME: plot_jitter_per_hour
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_ping_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df = last_value_per_session(df, "ping_jitter_ms")
+
+    df = df[df["ping_jitter_ms"].notna()].copy()
+    df["lb"] = df.groupby("test_label")["ping_jitter_ms"].transform(lambda x: x.quantile(0.01))
+    df["ub"] = df.groupby("test_label")["ping_jitter_ms"].transform(lambda x: x.quantile(0.99))
+    df = df[(df["ping_jitter_ms"] >= df["lb"]) & (df["ping_jitter_ms"] <= df["ub"])]
+    df = df.drop(columns=["lb","ub"])
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.hour + 1
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df.groupby(["test_label", "hour"])
+        .agg(mean=("ping_jitter_ms", "mean"),
+                std=("ping_jitter_ms", "std"),
+                count=("ping_jitter_ms", "count"))
+        .reset_index()
+    )
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+    labels = ["VPN_ON","VPN_OFF"]
+
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+        
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25, 
+            label=ci_label
+            )
+
+        ax.set_title(f"Jitter per hour – {label}")
+        ax.set_xlabel("Hour")
+        ax.set_xticks(range(0,24,2))
+        ax.grid(alpha=0.3)
+        ax.set_xlim(1,24)
+        if ax == axes[0]:
+            ax.set_ylabel("ms")
+
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/jitter_per_hour_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_jitter_per_hour
+[[file:/home/gabip/perf/data/gabriel/images/jitter_per_hour_gabriel.png]]
 
 #+RESULTS: plot_jitter
 [[file:/home/gabip/perf/gabriel/images/jitter_gabriel.png]]
 
-*** Latency Plot Function
 
-#+NAME: plot_latency
-#+BEGIN_SRC python :var user="gabriel" :var image_size='(7 3) :results file graphics :session graphs :exports both
-df = load_ping_data(user)
-img_dir = ensure_img_dir(user)
+#+NAME: plot_latency_per_hour
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from scipy.stats import norm
 
-lat = df['ping_latency_ms']
-lb = lat.quantile(0.01)
-ub = lat.quantile(0.99)
-df_l = df[(df['ping_latency_ms'] >= lb) & (df['ping_latency_ms'] <= ub)]
+    df = load_ping_data(user)
+    img_dir = ensure_img_dir(user)
 
-fig, axes = plt.subplots(1, 2, figsize=image_size)
-sns.violinplot(data=df_l.query("test_label == 'VPN_ON'"), x="test_label", y="ping_latency_ms", ax=axes[0], cut=0)
-axes[0].set_title("Latency with VPN")
+    df = df[df["ping_latency_ms"].notna()].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.hour
 
-sns.violinplot(data=df_l.query("test_label == 'VPN_OFF'"), x="test_label", y="ping_latency_ms", ax=axes[1], cut=0)
-axes[1].set_title("Latency without VPN")
+    z = norm.ppf((1 + ci_level) / 2)
 
-path = f"{img_dir}/latency_{user}.png"
-plt.tight_layout()
-plt.savefig(path, dpi=150)
-plt.close()
+    hourly = (
+        df.groupby(["test_label", "hour"])["ping_latency_ms"]
+        .agg(["mean", "count", "std"])
+        .reset_index()
+    )
 
-path
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+    labels = ["VPN_ON", "VPN_OFF"]
+
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+
+        ax.set_title(f"Latency per hour of day – {label}")
+        ax.set_xlabel("Hour of day")
+        ax.set_ylabel("ms")
+        ax.set_xticks(range(0, 24, 2))
+        ax.grid(alpha=0.3)
+        ax.set_xlim(0, 23)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/latency_per_hour_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
 #+END_SRC
 
-#+RESULTS: plot_latency
-[[file:/home/gabip/perf/gabriel/images/latency_gabriel.png]]
+*** Latencia ao longo do tempo
+#+NAME: plot_latency_over_time
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(6 4) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_ping_data(user)
+    img_dir = ensure_img_dir(user)
 
-*** Throughput Upload Plot Function
+    df = df[df["ping_latency_ms"].notna()].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.floor("H")
 
-#+NAME: plot_throughput
-#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :results file graphics :session graphs :exports both
-df = load_iperf_data(user)
-img_dir = ensure_img_dir(user)
+    z = norm.ppf((1 + ci_level) / 2)
 
-df_t = df.query("tcp_throughput_mbps.notna()").copy()
-df_t["timestamp"] = pd.to_datetime(df_t["timestamp"])
+    hourly = (
+        df.groupby(["test_label", "hour"])
+        .agg(
+            mean=("ping_latency_ms", "mean"),
+            std=("ping_latency_ms", "std"),   
+            count=("ping_latency_ms", "count"),
+        )
+        .reset_index()
+    )
 
-fig, axes = plt.subplots(1, 2, figsize=image_size)
-sns.lineplot(data=df_t.query("test_label == 'VPN_ON'"), x="timestamp", y="tcp_throughput_mbps", ax=axes[0])
-axes[0].set_title("Throughput with VPN")
-axes[0].set_xlabel("Date")
-axes[0].set_ylabel("Mbps")
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
 
-sns.lineplot(data=df_t.query("test_label == 'VPN_OFF'"), x="timestamp", y="tcp_throughput_mbps", ax=axes[1])
-axes[1].set_title("Throughput without VPN")
-axes[1].set_xlabel("Date")
-axes[1].set_ylabel("Mbps")
+    labels = ["VPN_ON", "VPN_OFF"]
 
-for ax in axes:
-    ax.xaxis.set_major_formatter(DATE_FMT)
-    ax.xaxis.set_major_locator(mdates.DayLocator())
-    ax.tick_params(axis='x', rotation=45)
+    ci_label = f"ci{int(ci_level*100)}"
 
-path = f"{img_dir}/throughput_{user}.png"
-plt.tight_layout()
-plt.savefig(path, dpi=150)
-plt.close()
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
 
-path
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+
+        ax.tick_params(axis='x', rotation=45)
+        ax.xaxis.set_major_formatter(DATE_FMT)
+        ax.xaxis.set_major_locator(mdates.DayLocator())
+        ax.set_title(f"Latency per hour of day – {label}")
+        ax.set_xlabel("Hour of day")
+        ax.set_ylabel("ms")
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/latency_over_time_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
 #+END_SRC
 
-#+RESULTS: plot_throughput
-[[file:/home/gabip/perf/gabriel/images/throughput_gabriel.png]]
+#+RESULTS: plot_latency_over_time
+[[file:/home/gabip/perf/data/gabriel/images/latency_over_time_gabriel.png]]
+
+*** Latencia por hora
+
+#+NAME: plot_latency_per_hour
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_ping_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df["lb"] = df.groupby("test_label")["ping_latency_ms"].transform(lambda x: x.quantile(0.01))
+    df["ub"] = df.groupby("test_label")["ping_latency_ms"].transform(lambda x: x.quantile(0.99))
+    df = df[(df["ping_latency_ms"] >= df["lb"]) & (df["ping_latency_ms"] <= df["ub"])]
+    df = df.drop(columns=["lb", "ub"])
+
+    df = df[df["ping_latency_ms"].notna()].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.hour + 1
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df.groupby(["test_label", "hour"])
+        .agg(
+            mean=("ping_latency_ms", "mean"),
+            std=("ping_latency_ms", "std"),   
+            count=("ping_latency_ms", "count"),
+        )
+        .reset_index()
+    )
+
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+    labels = ["VPN_ON", "VPN_OFF"]
+
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+            
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+
+        ax.set_title(f"Latency per hour of day – {label}")
+        ax.set_xlabel("Hour of day")
+        ax.set_xticks(range(0, 24, 2))
+        ax.grid(alpha=0.3)
+        ax.set_xlim(1, 24)
+        if ax == axes[0]:
+            ax.set_ylabel("ms")
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/latency_per_hour_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_latency_per_hour
+[[file:/home/gabip/perf/data/gabriel/images/latency_per_hour_gabriel.png]]
+
+*** Upload ao longo do tempo
+
+#+NAME: plot_upload_over_time
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_iperf_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df_t = df[df["tcp_throughput_mbps"].notna()].copy()
+    df_t["timestamp"] = pd.to_datetime(df_t["timestamp"])
+    df_t["hour"] = df_t["timestamp"].dt.floor("H")
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df_t.groupby(["test_label", "hour"])["tcp_throughput_mbps"]
+        .agg(['mean', 'count', 'std'])
+        .reset_index()
+    )
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+
+    labels = ["VPN_ON", "VPN_OFF"]
+
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label]
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+        ax.tick_params(axis='x', rotation=45)
+        ax.xaxis.set_major_formatter(DATE_FMT)
+        ax.xaxis.set_major_locator(mdates.DayLocator())
+        ax.tick_params(axis='x', rotation=45)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Mbps")
+        ax.set_title(f"Upload over time – {label}")
+        ax.set_ylim(bottom = 0)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+
+    path = f"{img_dir}/upload_over_time_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_upload_over_time
+[[file:/home/gabip/perf/data/gabriel/images/upload_over_time_gabriel.png]]
+
+*** Download ao longo do tempo 
+
+#+NAME: plot_download_over_time
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_iperf_rev_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df_t = df[df["tcp_throughput_mbps"].notna()].copy()
+    df_t["timestamp"] = pd.to_datetime(df_t["timestamp"])
+    df_t["hour"] = df_t["timestamp"].dt.floor("H")
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df_t.groupby(["test_label", "hour"])["tcp_throughput_mbps"]
+        .agg(['mean', 'count', 'std'])
+        .reset_index()
+    )
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+
+    labels = ["VPN_ON", "VPN_OFF"]
+
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label]
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+        ax.tick_params(axis='x', rotation=45)
+        ax.xaxis.set_major_formatter(DATE_FMT)
+        ax.xaxis.set_major_locator(mdates.DayLocator())
+        ax.tick_params(axis='x', rotation=45)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Mbps")
+        ax.set_title(f"Download over time  – {label}")
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/download_over_time_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_download_over_time
+[[file:/home/gabip/perf/data/gabriel/images/download_over_time_gabriel.png]]
+
+*** Upload por hora do dia  
+
+#+NAME: plot_upload_per_hour
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_iperf_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df = df[df["tcp_throughput_mbps"].notna()].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.hour   
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df.groupby(["test_label", "hour"])["tcp_throughput_mbps"]
+        .agg(["mean", "count", "std"])
+        .reset_index()
+    )
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+    labels = ["VPN_ON", "VPN_OFF"]
+    
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+        
+        ax.set_title(f"Upload per hour of day – {label}")
+        ax.set_xlabel("Hour of day")
+        ax.set_ylabel("Mbps")
+        ax.set_xticks(range(0, 24, 2))
+        ax.set_xlim(1, 24)
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/upload_per_hour_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_upload_per_hour
+[[file:/home/gabip/perf/data/gabriel/images/upload_per_hour_gabriel.png]]
+
+*** Download por hora do dia  
+
+#+NAME: plot_download_per_hour
+#+BEGIN_SRC python :var user="gabriel" :var image_size='(9 3) :var ci_level=0.95 :var combined_graph="true" :results file graphics :session graphs :exports both
+    df = load_iperf_rev_data(user)
+    img_dir = ensure_img_dir(user)
+
+    df = df[df["tcp_throughput_mbps"].notna()].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["hour"] = df["timestamp"].dt.hour + 1
+
+    z = norm.ppf((1 + ci_level) / 2)
+
+    hourly = (
+        df.groupby(["test_label", "hour"])["tcp_throughput_mbps"]
+        .agg(["mean", "count", "std"])
+        .reset_index()
+    )
+
+    hourly["stderr"] = hourly["std"] / hourly["count"].pow(0.5)
+    hourly["ci"] = z * hourly["stderr"]
+
+    labels = ["VPN_ON", "VPN_OFF"]
+    
+    ci_label = f"ci{int(ci_level*100)}"
+
+    if combined_graph:
+        fig, ax = plt.subplots(figsize=image_size)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=image_size)
+
+    for i, label in enumerate(labels):
+        ax = axes[0] if combined_graph else axes[i]
+
+        subset = hourly[hourly["test_label"] == label].sort_values("hour")
+
+        line, = ax.plot(subset["hour"], subset["mean"])
+        ax.fill_between(
+            subset["hour"],
+            subset["mean"] - subset["ci"],
+            subset["mean"] + subset["ci"],
+            alpha=0.25,
+            label=ci_label
+        )
+
+        ax.set_title(f"Download per hour of day – {label}")
+        ax.set_xlabel("Hour of day")
+        ax.set_ylabel("Mbps")
+        ax.set_xticks(range(0, 24, 2))
+        ax.grid(alpha=0.3)
+        ax.set_xlim(1, 24)
+        ax.legend(loc="best", fontsize="small")
+        label_line_end(ax, line, label)
+
+    for ax in axes:
+        ax.relim()
+        ax.autoscale_view()
+        ax.set_ylim(bottom=0)
+
+    path = f"{img_dir}/download_per_hour_{user}.png"
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+
+    path
+#+END_SRC
+
+#+RESULTS: plot_download_per_hour
+[[file:/home/gabip/perf/data/gabriel/images/download_per_hour_gabriel.png]]
+
+
 
 * Presentation 
 :PROPERTIES:
