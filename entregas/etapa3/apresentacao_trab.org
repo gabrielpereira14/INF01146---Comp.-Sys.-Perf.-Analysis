@@ -32,271 +32,72 @@
   manter uma melhor modularização, entretanto 
   - Execução simultânea de ping e iperf;
     
-*** Coleta dos dados 
+** Coleta dos dados 
+  Para fazer a coleta dos dados, foram feitos 3 scripts:
+    - "run_test.py" - é o script principal, é responsável pelo controle da VPN, bem como usa o script que coleta os dados do ping e coleta dados do ipef.
+    - "run_ping_test.py" - coleta os dados do ping, foi feito em um outro arquivo para possibilitar a paralelização da coleta. 
+    - "utils/env_loader" - le os dados do arquivo .env que define o nome da pasta onde salvar os dados coletados
+    - "utils/csv_gzip_manager.py" - define as funcões que tratam de ler descompactar e compactar os dados no inicio e fim da coleta 
+  
+**** Como executar
 
-**** Script principal - run_test.py
-  #+BEGIN_SRC python
-    import subprocess
-    import time
-    import sys
+***** Configuração do ambiente
+  Garanta que as bibliotecas python necessárias estão instaladas, elas estão descritas no arquivo "requirements.txt" no diretório src, e podem ser facilmente instaladas com o comando:
+
+`pip install -r requirements.txt`
+
+  onde 'path' é o caminho para o arquivo "requirements.txt".
+
+  Também é necessário criar um arquivo .env na raiz do projeto, ela deve conter a váriavel USER_NAME, por exemplo:
+ 
+  `USER_NAME=meu_nome`
+
+  com isso, os dados da coleta serão salvos em data/meu_nome.
+
+  Por fim, também é necessario criar um arquivo chamado "pass.txt" no diretorio utils, este será o arquivo que conterá as suas credenciais de acesso à VPN da UFRGS (mesmas credenciais do moodle), neste formato:
+   
+  ```
+  00112233
+  minhasenhadomoodle
+  ```
+
+  Também é necessario executar o servidor do iperf no PCAD, usando: 
+
+  ```
+  iperf -s -p 8787
+  ```
+
+***** Executando a coleta
+  Como o OpenVPN precisa ser rodado com sudo, para o nosso grupo foi mais fácil rodar o script de coleta diretamente pelo terminal do que usando o emacs. Dessa forma,
+  deixaremos o conteudo dos scripts neste arquivo e o comando necessário para executá-los no terminal do sistema operacional.
+
+  #+BEGIN_SRC python :exports :results output
     import os
-    import argparse
-    import platform
-    from utils.env_loader import load_env_manual
+    SCRIPT_DIR = ORGDIR 
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-    import csv     
-    from datetime import datetime     
-
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-    SOURCE_FOLDER = f"{PROJECT_ROOT}/src"  
-    DATA_DIR = f"{PROJECT_ROOT}/data"  
-
-    load_env_manual(os.path.join(PROJECT_ROOT, '.env') ) # carregamento do .env
-
-    USER_NAME = os.getenv('USER_NAME')
-    if USER_NAME:
-        USER_NAME = USER_NAME.lower()
-    else:
-        print("Could not find the 'USER_NAME' variable in the .env file.")
-
-    os.makedirs(f"{DATA_DIR}/{USER_NAME}", exist_ok=True)
-
-    OPEN_VPN_CONFIG_PATH = os.path.join(SCRIPT_DIR, "ufrgs.ovpn")
-    PASS_PATH = os.path.join(SCRIPT_DIR, "pass.txt")
-    OPENVPN_CMD = ["sudo", "openvpn", "--config", OPEN_VPN_CONFIG_PATH , "--auth-user-pass", PASS_PATH]
-
-    WAIT_TIME_AFTER_VPN_TOGGLE = 10
-    SESSION_DURATION_SECONDS = 240
-    IPERF_DURATION = 10
-    INTERVAL = 5  
-
-    PING_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "ping_results.csv")
-    IPERF_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "iperf_results.csv")   
-    IPERF_TEST_OUTPUT_REVERSE = os.path.join(DATA_DIR, USER_NAME, "iperf_results_reversed.csv")   
-
-    IPERF_SERVER = "pcad.inf.ufrgs.br" 
-    IPERF_PORT = 8787     
-
-    def kill_vpn() -> None:
-        """Mata qualquer processo OpenVPN em execução."""
-        subprocess.run(["pkill", "-f", "openvpn"], capture_output=True)
-
-    def start_vpn() -> subprocess.Popen:
-        """Inicia o OpenVPN."""
-        stdout = subprocess.PIPE
-        stderr = None
-        if DEBUG:
-            stdout = None
-        return subprocess.Popen(OPENVPN_CMD, stdout=stdout, stderr=stderr)
-
-    def start_ping_test(duration: int, label : str) -> subprocess.Popen:
-        cmd = [sys.executable, os.path.join(SOURCE_FOLDER, "run_ping_test.py"), "--duration", str(duration), "--output_path", PING_TEST_OUTPUT_FILE_PATH, "--label", label]
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=None,
-        )
-        return process
-
-    def stop_ping_test(process):
-        """Para o processo de ping."""
-        print("--- [PING] Parando ping... ---")
-        try:
-            if process.poll() is None:
-                process.terminate()
-                process.wait()
-        except Exception as e:
-            print(f"[ERRO ao parar o ping] {e}")
-
-        print("--- [PING] Parado. ---")
-
-    def run_iperf_tcp(server, port=8787, duration=10, reverse= False):
-        """Roda o iperf TCP e retorna o throughput em Mbps."""
-        cmd = ["iperf", "-c", server, "-p", str(port), "-y", "C", "-t", str(duration)]
-        if reverse:
-            cmd.insert(9, "-R")
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            output_csv = result.stdout.strip()
-            values = output_csv.split(',')
-
-            if 'tcp connect failed' in result.stderr and not output_csv:
-                print(f"[IPERF TCP ERROR] Falha ao conectar no servidor, garanta que o servidor esteja rodando")
-                print(result.stderr)
-                print(result.stdout)
-                return None
-
-            bps = float(values[-1])
-            throughput_mbps = bps / 1e6
-            return throughput_mbps
-        except Exception as e:
-            print(f"[IPERF TCP ERROR] {e}")
-            return None
-
-    def write_to_csv(row, file):
-        """Adiciona uma linha de resultado ao arquivo CSV."""
-        file_exists = os.path.isfile(file)
-
-        with open(file, "a", newline="") as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow([
-                    "timestamp", "test_label", "tcp_throughput_mbps",
-                ])
-            writer.writerow(row)
-
-    def start_iperf_test(label : str, reverse : bool):
-        tcp_throughput = run_iperf_tcp(IPERF_SERVER, IPERF_PORT, IPERF_DURATION, reverse)
-
-        log_label = f"IPERF TCP{ " REVERSO" if reverse else ""}"
-
-        if tcp_throughput is not None:
-            print(f" [{log_label}] Throughput: {tcp_throughput:.2f} Mbps")
-            timestamp = datetime.now().isoformat()
-            row = [
-                timestamp, label, tcp_throughput,
-            ]
-
-            output_file_path = IPERF_TEST_OUTPUT_REVERSE if reverse else IPERF_TEST_OUTPUT_FILE_PATH
-            write_to_csv(row, output_file_path)           
-            print(f"[{log_label}]: Resultado salvo com sucesso")
-        else:
-            print(f"[{log_label}] Teste falhou.")
-            exit(1)
-        return
-
-    def ensure_privileges():
-        system = platform.system()
-
-        print(f"Running on {system}")
-
-        if system == "Windows":
-            import ctypes
-            try:
-                is_admin = ctypes.windll.shell32.IsUserAnAdmin()
-            except:
-                is_admin = False
-
-            if not is_admin:
-                args = " ".join(f'"{a}"' for a in sys.argv[1:])
-                cmd = [
-                    "powershell",
-                    "-Command",
-                    (
-                        f'Start-Process "{sys.executable}" '
-                        f'-ArgumentList "{args}" '
-                        f'-Verb RunAs -Wait'
-                    )
-                ]
-
-                result = subprocess.run(cmd)
-                sys.exit(result.returncode or 0)
-
-        elif hasattr(os, "geteuid") and os.geteuid() != 0:
-            try:
-                result = subprocess.run(["sudo", sys.executable, *sys.argv])
-                sys.exit(result.returncode or 0)
-            except KeyboardInterrupt:
-                pass
-            sys.exit(1) 
-
-    if __name__ == "__main__":
-        parser = argparse.ArgumentParser(description="Script with debug flag")
-        parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-        args = parser.parse_args()
-        DEBUG = args.debug
-
-        if DEBUG:
-            print("Debug: ON")
-
-        ensure_privileges()
-
-        print(f"Hello, {USER_NAME}!")
-        print("=== VPN Impact Test ===")
-        print(f"Resultados do iperf serão salvos em: {IPERF_TEST_OUTPUT_FILE_PATH}")
-        print(f"Resultados do ping serão salvos em: {PING_TEST_OUTPUT_FILE_PATH}")
-        print("Pressione Ctrl+C para parar.\n")
-
-        skip_udp = True
-        ping_proc = None
-        ping_file = None
-        reverse = False
-
-        try:
-            while True:
-                kill_vpn()
-
-                print("\n[SESSÃO VPN ON] Iniciando VPN...")
-                vpn_proc = start_vpn()
-                time.sleep(WAIT_TIME_AFTER_VPN_TOGGLE) 
-
-                ping_proc = start_ping_test(SESSION_DURATION_SECONDS, "VPN_ON")
-
-                session_start_time = time.time()
-                print(f"[SESSÃO VPN ON] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {IPERF_DURATION}s...")
-
-                reverse = not reverse
-
-                while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                    start_iperf_test("VPN_ON", reverse)
-
-                    poll = ping_proc.poll()
-
-                    if poll is not None and poll != 0:
-                        print(f"[AVISO] Ping longo (ON) parou inesperadamente. {poll}")
-                        break
-
-                    time.sleep(INTERVAL)
-
-                print(f"[SESSÃO VPN ON] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
-                stop_ping_test(ping_proc)
-                kill_vpn()
-                time.sleep(INTERVAL)
-
-                print("\n[SESSÃO VPN OFF] Garantindo que VPN está parada.")
-                kill_vpn()
-
-                ping_proc =  start_ping_test(SESSION_DURATION_SECONDS, "VPN_OFF")
-
-                session_start_time = time.time()
-                print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
-
-                while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                    start_iperf_test("VPN_OFF", reverse)
-
-                    if poll is not None and poll != 0:
-                        print("[AVISO] Ping longo (OFF) parou inesperadamente.")
-                        break
-
-                    time.sleep(INTERVAL)
-
-                print(f"[SESSÃO VPN OFF] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
-                stop_ping_test(ping_proc)
-
-                print(f"\n=== Ciclo completo (ON/OFF). Reiniciando em {INTERVAL}s... ===")
-                time.sleep(INTERVAL)
-
-        except KeyboardInterrupt:
-            print("\nParado pelo usuário.")
-            if ping_proc:
-                stop_ping_test(ping_proc)
-            kill_vpn()
-            print("Script finalizado.")
-        except Exception as e:
-            exc_type, exc_obj, tb = sys.exc_info()
-            line = tb.tb_lineno
-            print(f"\n[ERRO FATAL] Ocorreu um erro: {e} na linha {line}")
-            if ping_proc:
-                stop_ping_test(ping_proc)
-            kill_vpn()
+    print(f"python3 {PROJECT_ROOT}/src/run_tests.py")
   #+END_SRC
 
+  #+RESULTS:
+  : python3 /home/gabip/perf/src/run_tests.py
+
+  Com esse comando é possível executar o script de coleta a partir do terminal
+
+  A seguir estarão os scripts usados na coleta.
+
+***** Script principal - run_tests.py
+# `C-c '`  abre o conteudo em outro buffer de forma editavel
+#+INCLUDE: "../../src/run_tests.py" src python
+***** Script responsavel pelo ping - run_ping_test.py
+# `C-c '`  abre o conteudo em outro buffer de forma editavel
+#+INCLUDE: "../../src/run_ping_test.py" src python
+***** Scripts que define as funcões que leem o env - env_loader.py
+# `C-c '`  abre o conteudo em outro buffer de forma editavel
+#+INCLUDE: "../../src/utils/env_loader.py" src python
+***** Scripts que define as funcões que gerenciam a compressão dos dados coletados - env_loader.py
+# `C-c '`  abre o conteudo em outro buffer de forma editavel
+#+INCLUDE: "../../src/utils/csv_gzip_manager.py" src python
   
 ** Funcoes para plotar os graficos
 Como alguns gráficos serão usados em mais de um lugar mas com a fonte dos dados diferente, deixaremos esses gráficos encapsulados em funcoes que permitem o facil reuso.
@@ -1080,8 +881,67 @@ Bloco que importa as biblioteca necessárias e define as funcoes de importacao d
 [[file:/home/gabip/perf/data/gabriel/images/download_per_hour_gabriel.png]]
 
 
+** Regressão linear
+    Apesar de dos dados serem series temporais, e o framework visto em aula não suportar esse tipo de análise, vamos aplicá-lo como forma de exercício.
 
-* Presentation 
+    #+CALL: plot_latency_per_hour(user="gabriel") :session graphs
+    
+    #+RESULTS:
+    [[file:/home/gabip/perf/data/gabriel/images/latency_per_hour_gabriel.png]]
+
+    Vamos tenta explicar a latência em funcão da VPN estar ligada ou não.
+    
+    #+BEGIN_SRC python :exports :results output :session graphs
+      import statsmodels.formula.api as smf
+
+      df = load_ping_data("gabriel")
+
+      print(df.head())
+
+      reg = smf.ols("ping_latency_ms ~ test_label", data=df).fit()
+      print(reg.summary())
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+                     timestamp  session test_label  ping_latency_ms  ping_jitter_ms  ping_loss_%
+  0 2025-11-12 22:19:59.276110        1     VPN_ON             15.1            0.00          0.0
+  1 2025-11-12 22:20:00.252454        1     VPN_ON             10.6            0.28          0.0
+  2 2025-11-12 22:20:01.252663        1     VPN_ON             11.0            0.29          0.0
+  3 2025-11-12 22:20:02.261960        1     VPN_ON             20.8            0.88          0.0
+  4 2025-11-12 22:20:03.251324        1     VPN_ON             11.8            1.39          0.0
+                              OLS Regression Results                            
+  ==============================================================================
+  Dep. Variable:        ping_latency_ms   R-squared:                       0.030
+  Model:                            OLS   Adj. R-squared:                  0.030
+  Method:                 Least Squares   F-statistic:                 1.754e+04
+  Date:                Sun, 30 Nov 2025   Prob (F-statistic):               0.00
+  Time:                        17:26:21   Log-Likelihood:            -3.5501e+06
+  No. Observations:              571302   AIC:                         7.100e+06
+  Df Residuals:                  571300   BIC:                         7.100e+06
+  Df Model:                           1                                         
+  Covariance Type:            nonrobust                                         
+  ========================================================================================
+                             coef    std err          t      P>|t|      [0.025      0.975]
+  ----------------------------------------------------------------------------------------
+  Intercept               91.5325      0.228    402.024      0.000      91.086      91.979
+  test_label[T.VPN_ON]   -42.3784      0.320   -132.433      0.000     -43.006     -41.751
+  ==============================================================================
+  Omnibus:                   736217.749   Durbin-Watson:                   0.666
+  Prob(Omnibus):                  0.000   Jarque-Bera (JB):        492757964.398
+  Skew:                           6.700   Prob(JB):                         0.00
+  Kurtosis:                     146.251   Cond. No.                         2.63
+  ==============================================================================
+
+  Notes:
+  [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+  #+end_example
+
+  Obviamente a latência não é explicada pela VPN estar sendo usada ou não, podemos ver pelo R-squared, 0.030.
+
+  Mas esse é um exemplo de como poderíamos fazer a análise caso fosse aplicável ao nosso trabalho.
+  
+* Apresentacao
 :PROPERTIES:
 :BEAMER_env: ignoreheading
 :END:
