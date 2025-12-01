@@ -306,90 +306,94 @@ Como alguns gráficos serão usados em mais de um lugar mas com a fonte dos dado
 Bloco que importa as biblioteca necessárias e define as funcoes de importacao dos dados
 
 #+BEGIN_SRC python :eval yes :exports :results output :session graphs
-    import sys
-    import pandas as pd
-    import os
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
-    import seaborn as sns
-    from scipy.stats import norm
+  import sys
+  import pandas as pd
+  import os
+  import matplotlib.pyplot as plt
+  import matplotlib.dates as mdates
+  import seaborn as sns
+  import gzip
+  from scipy.stats import norm
 
-    SCRIPT_DIR = ORGDIR 
-    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
-    DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
-    DATE_FMT = mdates.DateFormatter("%d/%m")
+  SCRIPT_DIR = ORGDIR 
+  PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+  DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+  DATE_FMT = mdates.DateFormatter("%d/%m")
 
-    def load_ping_data(user):
-        csv = f"{DATA_ROOT}/{user}/ping_results.csv"
-        if not os.path.exists(csv):
-            raise FileNotFoundError(csv)
 
-        df = pd.read_csv(csv)
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"],
-            format="ISO8601",
-            errors="raise"
-        )
-        return df
+  def _load_csv_or_gzip(path: str):
+      gz_path = path + ".gz"
 
-    def load_iperf_data(user):
-        csv = f"{DATA_ROOT}/{user}/iperf_results.csv"
-        if not os.path.exists(csv):
-            raise FileNotFoundError(csv)
+      if os.path.exists(gz_path):
+          with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+              return pd.read_csv(f)
+      elif os.path.exists(path):
+          return pd.read_csv(path)
+      else:
+          raise FileNotFoundError(f"No CSV or GZIP found for: {path}")
 
-        df = pd.read_csv(csv)
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"],
-            format="ISO8601",
-            errors="raise"
-        )
-        return df
+  def load_ping_data(user):
+      csv = f"{DATA_ROOT}/{user}/ping_results.csv"
+      df = _load_csv_or_gzip(csv)
+      df["timestamp"] = pd.to_datetime(
+          df["timestamp"],
+          format="ISO8601",
+          errors="raise"
+      )
+      return df
 
-    def load_iperf_rev_data(user):
-        csv = f"{DATA_ROOT}/{user}/iperf_results_reversed.csv"
-        if not os.path.exists(csv):
-            raise FileNotFoundError(csv)
+  def load_iperf_data(user):
+      csv = f"{DATA_ROOT}/{user}/iperf_results.csv"
+      df = _load_csv_or_gzip(csv)
+      df["timestamp"] = pd.to_datetime(
+          df["timestamp"],
+          format="ISO8601",
+          errors="raise"
+      )
+      return df
 
-        df = pd.read_csv(csv)
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"],
-            format="ISO8601",
-            errors="raise"
-        )
-        return df
+  def load_iperf_rev_data(user):
+      csv = f"{DATA_ROOT}/{user}/iperf_results_reversed.csv"
+      df = _load_csv_or_gzip(csv)
+      df["timestamp"] = pd.to_datetime(
+          df["timestamp"],
+          format="ISO8601",
+          errors="raise"
+      )
+      return df
 
-    def ensure_img_dir(user):
-        d = f"{PROJECT_ROOT}/data/{user}/images"
-        os.makedirs(d, exist_ok=True)
-        return d
+  def ensure_img_dir(user):
+      d = f"{PROJECT_ROOT}/data/{user}/images"
+      os.makedirs(d, exist_ok=True)
+      return d
 
-    def last_value_per_session(df, column):
-        df_sorted = df.sort_values("timestamp")
-        return (
-            df_sorted.groupby(["test_label", "session"])
-            .tail(1)[["timestamp", "test_label", column]]
-            .copy()
-        )
+  def last_value_per_session(df, column):
+      df_sorted = df.sort_values("timestamp")
+      return (
+          df_sorted.groupby(["test_label", "session"])
+          .tail(1)[["timestamp", "test_label", column]]
+          .copy()
+      )
 
-    def label_line_end(ax, line, label=None, **kwargs):
-        x, y = line.get_xdata(), line.get_ydata()
-        label_text = label
+  def label_line_end(ax, line, label=None, **kwargs):
+      x, y = line.get_xdata(), line.get_ydata()
+      label_text = label
 
-        xmin, xmax = ax.get_xlim()
-        xmax += (xmax - xmin) * 0.05
-        ax.set_xlim(xmin, xmax)
+      xmin, xmax = ax.get_xlim()
+      xmax += (xmax - xmin) * 0.05
+      ax.set_xlim(xmin, xmax)
 
-        ax.text(
-            x[-1],
-            y[-1],
-            f" {label_text}",
-            color=line.get_color(),
-            fontsize=10,
-            va="center",
-            ha="left",
-            transform=ax.transData,
-            ,**kwargs,
-        )
+      ax.text(
+          x[-1],
+          y[-1],
+          f" {label_text}",
+          color=line.get_color(),
+          fontsize=10,
+          va="center",
+          ha="left",
+          transform=ax.transData,
+          ,**kwargs,
+      )
 #+END_SRC
 
 #+RESULTS:

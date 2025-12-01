@@ -5,6 +5,7 @@ import os
 import argparse
 import platform
 from utils.env_loader import load_env_manual
+from utils.csv_gzip_manager import prepare_csv_state, compress_csv
 
 import csv     
 from datetime import datetime     
@@ -37,6 +38,10 @@ PING_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "ping_results.csv
 IPERF_TEST_OUTPUT_FILE_PATH = os.path.join(DATA_DIR, USER_NAME, "iperf_results.csv")   
 IPERF_TEST_OUTPUT_REVERSE = os.path.join(DATA_DIR, USER_NAME, "iperf_results_reversed.csv")   
 
+PING_TEST_OUTPUT_FILE_PATH = prepare_csv_state(PING_TEST_OUTPUT_FILE_PATH)
+IPERF_TEST_OUTPUT_FILE_PATH = prepare_csv_state(IPERF_TEST_OUTPUT_FILE_PATH)
+IPERF_TEST_OUTPUT_REVERSE = prepare_csv_state(IPERF_TEST_OUTPUT_REVERSE)
+
 IPERF_SERVER = "pcad.inf.ufrgs.br" 
 IPERF_PORT = 8787     
 
@@ -56,7 +61,7 @@ def start_ping_test(duration: int, label : str) -> subprocess.Popen:
     cmd = [sys.executable, os.path.join(SOURCE_FOLDER, "run_ping_test.py"), "--duration", str(duration), "--output_path", PING_TEST_OUTPUT_FILE_PATH, "--label", label]
     process = subprocess.Popen(
         cmd,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=None,
     )
     return process
@@ -130,8 +135,9 @@ def start_iperf_test(label : str, reverse : bool):
         print(f"[{log_label}]: Resultado salvo com sucesso")
     else:
         print(f"[{log_label}] Teste falhou.")
-        exit(1)
-    return
+        return 1
+    
+    return 0
 
 def ensure_privileges():
     system = platform.system()
@@ -167,6 +173,24 @@ def ensure_privileges():
         except KeyboardInterrupt:
             pass
         sys.exit(1) 
+
+def compress_all_results():
+    print("\n[Compressão] Compactando resultados…")
+
+    try:
+        compress_csv(PING_TEST_OUTPUT_FILE_PATH)
+    except Exception as e:
+        print(f"[WARN] Falha ao comprimir ping_results: {e}")
+
+    try:
+        compress_csv(IPERF_TEST_OUTPUT_FILE_PATH)
+    except Exception as e:
+        print(f"[WARN] Falha ao comprimir iperf_results: {e}")
+
+    try:
+        compress_csv(IPERF_TEST_OUTPUT_REVERSE)
+    except Exception as e:
+        print(f"[WARN] Falha ao comprimir iperf_results_reversed: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script with debug flag")
@@ -206,7 +230,10 @@ if __name__ == "__main__":
             reverse = not reverse
             
             while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                start_iperf_test("VPN_ON", reverse)
+                result = start_iperf_test("VPN_ON", reverse)
+                
+                if result != 0:
+                    raise Exception("Teste iperf falhou")
                 
                 poll = ping_proc.poll()
                 
@@ -219,6 +246,7 @@ if __name__ == "__main__":
             print(f"[SESSÃO VPN ON] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
             stop_ping_test(ping_proc)
             kill_vpn()
+            compress_all_results()
             time.sleep(INTERVAL)
 
             print("\n[SESSÃO VPN OFF] Garantindo que VPN está parada.")
@@ -230,7 +258,10 @@ if __name__ == "__main__":
             print(f"[SESSÃO VPN OFF] Rodando iperf (a cada {IPERF_DURATION + INTERVAL}s) por {SESSION_DURATION_SECONDS}s...")
             
             while (time.time() - session_start_time) < SESSION_DURATION_SECONDS:
-                start_iperf_test("VPN_OFF", reverse)
+                result = start_iperf_test("VPN_OFF", reverse)
+                
+                if result != 0:
+                    raise Exception("Teste iperf falhou")
 
                 if poll is not None and poll != 0:
                     print("[AVISO] Ping longo (OFF) parou inesperadamente.")
@@ -240,6 +271,7 @@ if __name__ == "__main__":
             
             print(f"[SESSÃO VPN OFF] Sessão de {SESSION_DURATION_SECONDS / 60} min finalizada.")
             stop_ping_test(ping_proc)
+            compress_all_results()
             
             print(f"\n=== Ciclo completo (ON/OFF). Reiniciando em {INTERVAL}s... ===")
             time.sleep(INTERVAL)
@@ -249,6 +281,7 @@ if __name__ == "__main__":
         if ping_proc:
             stop_ping_test(ping_proc)
         kill_vpn()
+        compress_all_results()
         print("Script finalizado.")
     except Exception as e:
         exc_type, exc_obj, tb = sys.exc_info()
@@ -257,3 +290,4 @@ if __name__ == "__main__":
         if ping_proc:
             stop_ping_test(ping_proc)
         kill_vpn()
+        compress_all_results()
